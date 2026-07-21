@@ -31,6 +31,15 @@ def _setting(name: str, default: str = "") -> str:
         return default
 
 
+def _setting_any(names: tuple[str, ...], default: str = "") -> str:
+    """Read the first configured value, supporting platform aliases."""
+    for name in names:
+        value = _setting(name)
+        if value:
+            return value
+    return default
+
+
 class BusinessAgentProvider(ABC):
     """Provider interface reserved for API and future HermesAgent adapters."""
 
@@ -75,9 +84,16 @@ class MiniMaxProvider(BusinessAgentProvider):
     def __init__(self) -> None:
         from openai import OpenAI
 
-        api_key = _setting("MINIMAX_API_KEY")
-        base_url = _setting("MINIMAX_BASE_URL", "https://api.minimax.io/v1")
-        model = _setting("MINIMAX_MODEL", "MiniMax-M2.7")
+        minimax_key = _setting("MINIMAX_API_KEY")
+        platform_key = _setting("APP_KEY")
+        api_key = minimax_key or platform_key
+        default_base_url = (
+            "https://api.minimaxi.com/v1"
+            if minimax_key
+            else "https://ai.synnovator.com/v1"
+        )
+        base_url = _setting_any(("MINIMAX_BASE_URL", "BASE_URL"), default_base_url)
+        model = _setting_any(("MINIMAX_MODEL", "MODEL_ID"), "MiniMax-M2.7")
         if not api_key:
             raise RuntimeError("未找到 MINIMAX_API_KEY，请在 .env 或 Streamlit Secrets 中配置。")
         self.client = OpenAI(
@@ -171,7 +187,7 @@ class MockProvider(BusinessAgentProvider):
 
 
 def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, str]:
-    if not force_mock and _setting("MINIMAX_API_KEY"):
+    if not force_mock and _setting_any(("MINIMAX_API_KEY", "APP_KEY")):
         return MiniMaxProvider(), "MiniMax API"
     if not force_mock and _setting("NVIDIA_API_KEY"):
         return NvidiaNimProvider(), "NVIDIA NIM API"
@@ -183,7 +199,7 @@ def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, s
 def has_api_provider() -> bool:
     """Whether a model provider is configured through env or cloud secrets."""
     return bool(
-        _setting("MINIMAX_API_KEY")
+        _setting_any(("MINIMAX_API_KEY", "APP_KEY"))
         or _setting("NVIDIA_API_KEY")
         or _setting("OPENAI_API_KEY")
     )
