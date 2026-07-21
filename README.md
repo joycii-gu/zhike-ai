@@ -149,5 +149,5 @@ zhike-ai/
 - **项目定位：** 面向业务员的 AI 业务处理智能体
 - **核心闭环：** 客户信息输入 → 客户档案 → 需求分析 → 机会判断 → 跟进建议 → 沟通话术 → 业务日报
 - **W2 主入口：** Streamlit 网页 Demo（`app.py`）
-- **W2 运行模式：** Mock Skills Workflow，可在无 API Key 情况下演示
+- **W2 运行模式：** 默认支持 MiniMax-M2.7 API；未配置模型密钥时自动使用 Mock Skills Workflow
 - **提交目录：** `zhike-ai/`

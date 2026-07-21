@@ -149,5 +149,5 @@ This project is currently a W2 prototype. It focuses on validating the core work
 - **Product positioning:** An AI business processing agent for salespeople and client-facing professionals
 - **Core workflow:** Customer Input → Customer Profile → Need Analysis → Opportunity Assessment → Follow-up Suggestions → Communication Script → Daily Business Report
 - **W2 entry point:** Streamlit web demo (`app.py`)
-- **W2 runtime mode:** Mock Skills Workflow, runnable without an API key
+- **W2 runtime mode:** MiniMax-M2.7 API when configured; otherwise Mock Skills Workflow runs without an API key
 - **Submission directory:** `zhike-ai/`

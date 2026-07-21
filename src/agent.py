@@ -69,6 +69,53 @@ class OpenAIProvider(BusinessAgentProvider):
         return validate_report(json.loads(response.output_text))
 
 
+class MiniMaxProvider(BusinessAgentProvider):
+    """MiniMax OpenAI-compatible Chat Completions adapter."""
+
+    def __init__(self) -> None:
+        from openai import OpenAI
+
+        api_key = _setting("MINIMAX_API_KEY")
+        base_url = _setting("MINIMAX_BASE_URL", "https://api.minimax.io/v1")
+        model = _setting("MINIMAX_MODEL", "MiniMax-M2.7")
+        if not api_key:
+            raise RuntimeError("未找到 MINIMAX_API_KEY，请在 .env 或 Streamlit Secrets 中配置。")
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            timeout=90.0,
+            max_retries=2,
+        )
+        self.model = model
+
+    def generate(
+        self, customer_input: str, mock_customers: list[dict[str, Any]]
+    ) -> BusinessReport:
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {
+                    "role": "user",
+                    "content": build_user_prompt(customer_input, mock_customers),
+                },
+            ],
+            temperature=0.2,
+            max_completion_tokens=2048,
+        )
+        content = response.choices[0].message.content or ""
+        # MiniMax reasoning models may wrap the answer in <think>...</think>.
+        if "</think>" in content:
+            content = content.split("</think>", 1)[1].strip()
+        try:
+            payload = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                "MiniMax 返回内容不是有效 JSON，请检查模型输出或提示词。"
+            ) from exc
+        return validate_report(payload)
+
+
 class NvidiaNimProvider(BusinessAgentProvider):
     """NVIDIA NIM adapter using its OpenAI-compatible Chat Completions API."""
 
@@ -124,6 +171,8 @@ class MockProvider(BusinessAgentProvider):
 
 
 def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, str]:
+    if not force_mock and _setting("MINIMAX_API_KEY"):
+        return MiniMaxProvider(), "MiniMax API"
     if not force_mock and _setting("NVIDIA_API_KEY"):
         return NvidiaNimProvider(), "NVIDIA NIM API"
     if not force_mock and _setting("OPENAI_API_KEY"):
@@ -133,7 +182,11 @@ def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, s
 
 def has_api_provider() -> bool:
     """Whether a model provider is configured through env or cloud secrets."""
-    return bool(_setting("NVIDIA_API_KEY") or _setting("OPENAI_API_KEY"))
+    return bool(
+        _setting("MINIMAX_API_KEY")
+        or _setting("NVIDIA_API_KEY")
+        or _setting("OPENAI_API_KEY")
+    )
 
 
 def business_agent(

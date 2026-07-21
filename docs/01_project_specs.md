@@ -310,6 +310,7 @@ graph TD
 W2 阶段通过 `Provider Interface` 统一封装不同执行方式：
 
 - `MockProvider`：在无外部模型和无 API Key 时，按已提交 Skills 的边界执行本地演示流程；
+- `MiniMaxProvider`：通过 MiniMax OpenAI 兼容接口调用 MiniMax-M2.7，返回统一报告 Schema；
 - `OpenAIProvider`：作为可选模型 Provider，按统一报告 Schema 返回结构化结果。
 
 后续可将 HermesAgent Agent Runtime 接入该接口，负责：
