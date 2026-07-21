@@ -17,6 +17,33 @@ from .skills import run_mock_skills_pipeline
 load_dotenv()
 
 
+def _parse_json_response(content: str) -> dict[str, Any]:
+    """Parse JSON returned with optional reasoning or Markdown wrappers."""
+    cleaned = content.strip()
+    if "</think>" in cleaned:
+        cleaned = cleaned.split("</think>", 1)[1].strip()
+    cleaned = cleaned.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
+
+    try:
+        payload = json.loads(cleaned)
+        if isinstance(payload, dict):
+            return payload
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(cleaned):
+        if character != "{":
+            continue
+        try:
+            payload, _ = decoder.raw_decode(cleaned[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(payload, dict):
+            return payload
+    raise RuntimeError("MiniMax 返回内容不是有效 JSON，请检查模型输出或提示词。")
+
+
 def _setting(name: str, default: str = "") -> str:
     """Read configuration from environment first, then Streamlit Secrets."""
     value = os.getenv(name, "").strip()
@@ -120,15 +147,7 @@ class MiniMaxProvider(BusinessAgentProvider):
             max_completion_tokens=2048,
         )
         content = response.choices[0].message.content or ""
-        # MiniMax reasoning models may wrap the answer in <think>...</think>.
-        if "</think>" in content:
-            content = content.split("</think>", 1)[1].strip()
-        try:
-            payload = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                "MiniMax 返回内容不是有效 JSON，请检查模型输出或提示词。"
-            ) from exc
+        payload = _parse_json_response(content)
         return validate_report(payload)
 
 
