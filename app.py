@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 import json
+import ast
+import re
 
 import streamlit as st
 
@@ -66,6 +68,7 @@ def select_example(example_text: str) -> None:
 
 def render_report_content(content: str) -> None:
     """Render structured model output as readable sections instead of raw JSON."""
+    content = prettify_inline_records(content)
     try:
         parsed = json.loads(content)
     except (TypeError, json.JSONDecodeError):
@@ -88,6 +91,41 @@ def render_report_content(content: str) -> None:
         st.markdown("\n".join(f"- {item}" for item in parsed))
     else:
         st.markdown(str(parsed))
+
+
+def prettify_inline_records(content: str) -> str:
+    """Turn Python-style list/dict records in Markdown into compact readable text."""
+    pattern = re.compile(r"\[(?:\s*\{.*?\}\s*,?)+\]", re.DOTALL)
+
+    def replace_list(match: re.Match[str]) -> str:
+        try:
+            records = ast.literal_eval(match.group(0))
+        except (ValueError, SyntaxError):
+            return match.group(0)
+        if not isinstance(records, list) or not all(isinstance(item, dict) for item in records):
+            return match.group(0)
+        rendered = []
+        for item in records:
+            preferred = [
+                ("客户名称", "客户"), ("行业", "行业"), ("优先级", "优先级"),
+                ("当前阶段", "阶段"), ("待办事项", "待办"), ("风险提醒", "风险"),
+            ]
+            parts = []
+            used = set()
+            for source, label in preferred:
+                if source in item:
+                    value = item[source]
+                    if isinstance(value, list):
+                        value = "、".join(str(v) for v in value)
+                    parts.append(f"{label}：{value}")
+                    used.add(source)
+            for key, value in item.items():
+                if key not in used and value not in (None, "", [], {}):
+                    parts.append(f"{key}：{value}")
+            rendered.append("；".join(parts))
+        return "<br>".join(f"• {line}" for line in rendered)
+
+    return pattern.sub(replace_list, content)
 
 st.markdown(
     """
