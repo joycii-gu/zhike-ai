@@ -33,7 +33,18 @@ st.markdown(
     .hero p {font-size: 1.08rem; opacity: .92; margin: .25rem 0;}
     .flow {font-size: .92rem !important; opacity: .78 !important; margin-top: 1rem !important;}
     .scope {padding: .8rem 1rem; border-left: 4px solid #3b82a0; background: #eef7fb; border-radius: 8px; margin: .5rem 0 1rem; color: #27465a;}
+    .status-row {display:flex; gap:.65rem; flex-wrap:wrap; margin:-.6rem 0 1.4rem;}
+    .status-pill {padding:.35rem .75rem; border-radius:999px; font-size:.82rem; font-weight:650; border:1px solid #d9e6ee; background:#fff; color:#365267;}
+    .status-pill.online {background:#ecfdf5; border-color:#a7f3d0; color:#047857;}
+    .status-pill.prototype {background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8;}
+    .step-strip {display:flex; gap:.45rem; align-items:center; flex-wrap:wrap; margin:0 0 1.25rem;}
+    .step {padding:.42rem .7rem; border-radius:10px; background:#f3f6f8; color:#6b7d89; font-size:.8rem; border:1px solid #e4ebef;}
+    .step-arrow {color:#9aabb5; font-size:.85rem;}
+    .result-head {display:flex; justify-content:space-between; align-items:center; padding:.85rem 1rem; margin:.8rem 0 1rem; border-radius:12px; background:#f4f9fc; border:1px solid #dcecf3; color:#23465d;}
+    .result-head strong {font-size:1.05rem;}
+    .footer-note {padding:.9rem 1rem; border-radius:12px; background:#f8fafc; border:1px solid #e5e7eb; color:#64748b; font-size:.82rem;}
     div[data-testid="stTabs"] button {font-weight: 650;}
+    div[data-testid="stTabs"] button[aria-selected="true"] {color:#0f6d8f; border-bottom-color:#0f8ca8;}
     div[data-testid="stMarkdownContainer"] table {width: 100%;}
 </style>
 """,
@@ -63,6 +74,27 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+api_ready = has_api_provider()
+st.markdown(
+    f"""
+<div class="status-row">
+  <span class="status-pill prototype">W2 Prototype</span>
+  <span class="status-pill {'online' if api_ready else ''}">{'● MiniMax-M2.7 API 已配置' if api_ready else '● Mock Skills Workflow'}</span>
+  <span class="status-pill">无数据库 · 不保存客户数据</span>
+</div>
+<div class="step-strip">
+  <span class="step">① 信息输入</span><span class="step-arrow">→</span>
+  <span class="step">② 客户档案</span><span class="step-arrow">→</span>
+  <span class="step">③ 需求分析</span><span class="step-arrow">→</span>
+  <span class="step">④ 机会判断</span><span class="step-arrow">→</span>
+  <span class="step">⑤ 跟进建议</span><span class="step-arrow">→</span>
+  <span class="step">⑥ 沟通话术</span><span class="step-arrow">→</span>
+  <span class="step">⑦ 业务日报</span>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
 left, right = st.columns([1.75, 1], gap="large")
 
 with left:
@@ -77,6 +109,7 @@ with left:
         height=210,
         placeholder="例如：李总，做企业培训，最近想了解 AI 员工如何帮助销售团队做客户跟进……",
     )
+    st.caption(f"当前输入 {len(customer_input.strip())} 个字符 · 无需预先整理，直接粘贴原始纪要即可")
     st.caption("无需先整理格式；知客会自动提取客户信息、需求和待确认事项。")
     optional_name = st.text_input("客户称谓（可选）", placeholder="例如：李总")
     optional_channel = st.selectbox(
@@ -103,7 +136,7 @@ with right:
     )
     force_mock = st.toggle(
         "强制使用 Mock 演示模式",
-        value=not has_api_provider(),
+        value=not api_ready,
     )
     st.caption(f"当前运行模式：{runtime_mode(force_mock=force_mock)}")
 
@@ -127,6 +160,15 @@ if generate:
 
 report = st.session_state.report
 if report:
+    st.markdown(
+        """
+<div class="result-head">
+  <strong>业务处理报告</strong>
+  <span>✓ 已完成 7 个 Skills · 已纳入 2 个 Mock 今日客户</span>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
     st.success("业务报告已生成。请在发送话术或作出业务决策前进行人工确认。")
     tabs = st.tabs(
         ["👤 客户档案", "🔎 客户需求分析", "📈 业务机会判断", "✅ 跟进建议", "💬 沟通话术", "🗓️ 业务日报"]
@@ -144,4 +186,7 @@ if report:
             st.markdown(report[key])
 
 st.divider()
-st.caption("W2 Prototype · 输出仅供业务辅助参考 · 不保存客户数据 · 最终发送与决策由人工确认")
+st.markdown(
+    '<div class="footer-note">W2 Prototype · 输出仅供业务辅助参考 · 不保存客户数据 · 最终发送与业务决策由人工确认</div>',
+    unsafe_allow_html=True,
+)
