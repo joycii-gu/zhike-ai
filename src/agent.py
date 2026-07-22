@@ -32,7 +32,9 @@ def _parse_json_response(content: Any) -> dict[str, Any]:
     if "</think>" in cleaned:
         cleaned = cleaned.split("</think>", 1)[1].strip()
     elif "<think>" in cleaned:
-        cleaned = cleaned.split("<think>", 1)[0].strip()
+        # Keep the remainder when the provider truncates an unclosed block;
+        # the JSON scanner below can still locate a complete object.
+        cleaned = cleaned.replace("<think>", "", 1).strip()
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL | re.IGNORECASE).strip()
     cleaned = cleaned.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
 
