@@ -42,6 +42,10 @@ def _parse_json_response(content: Any) -> dict[str, Any]:
         payload = json.loads(cleaned)
         if isinstance(payload, dict):
             return payload
+        if isinstance(payload, str):
+            nested = json.loads(payload)
+            if isinstance(nested, dict):
+                return nested
     except json.JSONDecodeError:
         pass
 
@@ -94,6 +98,13 @@ def _normalize_report_payload(payload: dict[str, Any]) -> dict[str, Any]:
         elif isinstance(node, list):
             for item in node:
                 visit(item)
+        elif isinstance(node, str):
+            try:
+                nested = json.loads(node)
+            except (TypeError, json.JSONDecodeError):
+                return
+            if isinstance(nested, (dict, list)):
+                visit(nested)
 
     visit(payload)
     return {**payload, **normalized}
