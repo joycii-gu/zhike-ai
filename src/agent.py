@@ -199,7 +199,8 @@ class MiniMaxProvider(BusinessAgentProvider):
                 },
             ],
             temperature=0.2,
-            max_completion_tokens=4096,
+            max_completion_tokens=6144,
+            response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content or ""
         payload = _normalize_report_payload(_parse_json_response(content))
