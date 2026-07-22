@@ -44,6 +44,29 @@ def _parse_json_response(content: str) -> dict[str, Any]:
     raise RuntimeError("MiniMax 返回内容不是有效 JSON，请检查模型输出或提示词。")
 
 
+def _normalize_report_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Normalize common model wrappers and Chinese field labels."""
+    for wrapper in ("report", "business_report", "result", "data", "output"):
+        nested = payload.get(wrapper)
+        if isinstance(nested, dict):
+            payload = nested
+            break
+
+    aliases = {
+        "客户档案": "customer_profile",
+        "客户需求分析": "need_analysis",
+        "业务机会判断": "opportunity_assessment",
+        "跟进建议": "follow_up_plan",
+        "沟通话术": "communication_script",
+        "业务日报": "daily_report",
+    }
+    normalized = dict(payload)
+    for chinese_key, english_key in aliases.items():
+        if english_key not in normalized and chinese_key in payload:
+            normalized[english_key] = payload[chinese_key]
+    return normalized
+
+
 def _setting(name: str, default: str = "") -> str:
     """Read configuration from environment first, then Streamlit Secrets."""
     value = os.getenv(name, "").strip()
@@ -147,7 +170,7 @@ class MiniMaxProvider(BusinessAgentProvider):
             max_completion_tokens=2048,
         )
         content = response.choices[0].message.content or ""
-        payload = _parse_json_response(content)
+        payload = _normalize_report_payload(_parse_json_response(content))
         return validate_report(payload)
 
 

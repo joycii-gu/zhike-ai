@@ -43,4 +43,7 @@ def build_user_prompt(customer_input: str, mock_customers: list[dict[str, Any]])
 {mock_json}
 </mock_customers>
 
+JSON top level must directly contain exactly these six keys: customer_profile, need_analysis, opportunity_assessment, follow_up_plan, communication_script, daily_report.
+Do not wrap them in report, data, or output, and do not add explanatory text outside JSON.
+
 请严格遵守系统指令并返回结构化业务报告。"""
