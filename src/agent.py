@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -17,11 +18,22 @@ from .skills import run_mock_skills_pipeline
 load_dotenv()
 
 
-def _parse_json_response(content: str) -> dict[str, Any]:
+def _parse_json_response(content: Any) -> dict[str, Any]:
     """Parse JSON returned with optional reasoning or Markdown wrappers."""
+    if isinstance(content, list):
+        content = "".join(
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in content
+        )
+    if not isinstance(content, str):
+        raise RuntimeError("MiniMax 返回内容为空或格式不支持，请检查模型输出。")
     cleaned = content.strip()
+    # MiniMax may return a closed or truncated reasoning block.
     if "</think>" in cleaned:
         cleaned = cleaned.split("</think>", 1)[1].strip()
+    elif "<think>" in cleaned:
+        cleaned = cleaned.split("<think>", 1)[0].strip()
+    cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL | re.IGNORECASE).strip()
     cleaned = cleaned.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
 
     try:
@@ -185,7 +197,7 @@ class MiniMaxProvider(BusinessAgentProvider):
                 },
             ],
             temperature=0.2,
-            max_completion_tokens=2048,
+            max_completion_tokens=4096,
         )
         content = response.choices[0].message.content or ""
         payload = _normalize_report_payload(_parse_json_response(content))
