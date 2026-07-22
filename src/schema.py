@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, TypedDict
 
 
@@ -41,8 +42,15 @@ def validate_report(data: Any) -> BusinessReport:
     if missing:
         raise ValueError(f"业务报告缺少字段：{', '.join(missing)}")
 
+    def format_field(value: Any) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, (dict, list)):
+            return json.dumps(value, ensure_ascii=False, indent=2)
+        return str(value).strip()
+
     report: BusinessReport = {
-        field: str(data[field]).strip() for field in REPORT_FIELDS  # type: ignore[misc]
+        field: format_field(data[field]) for field in REPORT_FIELDS  # type: ignore[misc]
     }
     if any(not report[field] for field in REPORT_FIELDS):
         raise ValueError("业务报告包含空模块。")

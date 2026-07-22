@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import json
 
 import streamlit as st
 
@@ -61,6 +62,32 @@ def select_example(example_text: str) -> None:
     """Update the input before Streamlit instantiates widgets on the rerun."""
     st.session_state.customer_input = example_text
     st.session_state.report = None
+
+
+def render_report_content(content: str) -> None:
+    """Render structured model output as readable sections instead of raw JSON."""
+    try:
+        parsed = json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        st.markdown(content)
+        return
+
+    if isinstance(parsed, dict):
+        rows = []
+        for key, value in parsed.items():
+            if isinstance(value, list):
+                display = "<br>".join(f"• {str(item)}" for item in value)
+            elif isinstance(value, dict):
+                display = "<pre>" + json.dumps(value, ensure_ascii=False, indent=2) + "</pre>"
+            else:
+                display = str(value)
+            display = display.replace("|", "\\|")
+            rows.append(f"| {key} | {display} |")
+        st.markdown("| 字段 | 内容 |\n|---|---|\n" + "\n".join(rows), unsafe_allow_html=True)
+    elif isinstance(parsed, list):
+        st.markdown("\n".join(f"- {item}" for item in parsed))
+    else:
+        st.markdown(str(parsed))
 
 st.markdown(
     """
@@ -183,7 +210,7 @@ if report:
     )
     for tab, key in zip(tabs, keys):
         with tab:
-            st.markdown(report[key])
+            render_report_content(report[key])
 
 st.divider()
 st.markdown(
