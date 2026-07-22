@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 
 from .mock_customers import get_mock_customers
 from .prompt import SYSTEM_PROMPT, build_user_prompt
-from .schema import REPORT_JSON_SCHEMA, BusinessReport, validate_report
+from .schema import REPORT_FIELDS, REPORT_JSON_SCHEMA, BusinessReport, validate_report
 from .skills import run_mock_skills_pipeline
 
 load_dotenv()
@@ -108,6 +108,20 @@ def _normalize_report_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
     visit(payload)
     return {**payload, **normalized}
+
+
+def _complete_missing_fields(
+    payload: dict[str, Any], customer_input: str, mock_customers: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Fill only missing model fields locally, avoiding a second API call."""
+    missing = [field for field in REPORT_FIELDS if not str(payload.get(field, "")).strip()]
+    if not missing:
+        return payload
+    local_report = run_mock_skills_pipeline(customer_input, mock_customers)
+    completed = dict(payload)
+    for field in missing:
+        completed[field] = local_report[field]
+    return completed
 
 
 def _setting(name: str, default: str = "") -> str:
@@ -215,6 +229,7 @@ class MiniMaxProvider(BusinessAgentProvider):
         )
         content = response.choices[0].message.content or ""
         payload = _normalize_report_payload(_parse_json_response(content))
+        payload = _complete_missing_fields(payload, customer_input, mock_customers)
         return validate_report(payload)
 
 
