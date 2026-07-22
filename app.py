@@ -72,7 +72,14 @@ def render_report_content(content: str) -> None:
     try:
         parsed = json.loads(content)
     except (TypeError, json.JSONDecodeError):
-        st.markdown(content)
+        fields = parse_inline_fields(content)
+        if fields:
+            rows = []
+            for key, value in fields:
+                rows.append(f"| {key} | {value.replace('|', '／')} |")
+            st.markdown("| 字段 | 内容 |\n|---|---|\n" + "\n".join(rows))
+        else:
+            st.markdown(content)
         return
 
     if isinstance(parsed, dict):
@@ -91,6 +98,27 @@ def render_report_content(content: str) -> None:
         st.markdown("\n".join(f"- {item}" for item in parsed))
     else:
         st.markdown(str(parsed))
+
+
+def parse_inline_fields(content: str) -> list[tuple[str, str]]:
+    """Parse model text such as '客户名称：…；行业：…' into table rows."""
+    labels = (
+        "客户名称", "客户称谓", "行业", "所属行业", "角色", "客户角色",
+        "当前需求", "核心需求", "关注点", "主要关注点", "预算", "当前阶段",
+        "时间计划", "待确认信息", "待确认事项",
+    )
+    label_pattern = "|".join(re.escape(label) for label in labels)
+    matches = list(re.finditer(rf"({label_pattern})\s*[：:]\s*", content))
+    if len(matches) < 2:
+        return []
+    rows: list[tuple[str, str]] = []
+    for index, match in enumerate(matches):
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
+        value = content[start:end].strip(" ；;\\n")
+        if value:
+            rows.append((match.group(1), value))
+    return rows
 
 
 def prettify_inline_records(content: str) -> str:
