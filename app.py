@@ -68,12 +68,13 @@ def select_example(example_text: str) -> None:
 
 def render_report_content(content: str) -> None:
     """Render structured model output as readable sections instead of raw JSON."""
-    content = prettify_inline_records(content)
+    original_content = content
     try:
-        parsed = json.loads(content)
+        parsed = json.loads(original_content)
     except (TypeError, json.JSONDecodeError):
-        parsed = extract_embedded_json(content)
+        parsed = extract_embedded_json(original_content)
         if parsed is None:
+            content = prettify_inline_records(original_content)
             fields = parse_inline_fields(content)
             if fields:
                 rows = []
