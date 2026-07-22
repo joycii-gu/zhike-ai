@@ -72,15 +72,17 @@ def render_report_content(content: str) -> None:
     try:
         parsed = json.loads(content)
     except (TypeError, json.JSONDecodeError):
-        fields = parse_inline_fields(content)
-        if fields:
-            rows = []
-            for key, value in fields:
-                rows.append(f"| {key} | {value.replace('|', '／')} |")
-            st.markdown("| 字段 | 内容 |\n|---|---|\n" + "\n".join(rows))
-        else:
-            st.markdown(content)
-        return
+        parsed = extract_embedded_json(content)
+        if parsed is None:
+            fields = parse_inline_fields(content)
+            if fields:
+                rows = []
+                for key, value in fields:
+                    rows.append(f"| {key} | {value.replace('|', '／')} |")
+                st.markdown("| 字段 | 内容 |\n|---|---|\n" + "\n".join(rows))
+            else:
+                st.markdown(content)
+            return
 
     if isinstance(parsed, dict):
         rows = []
@@ -119,6 +121,21 @@ def parse_inline_fields(content: str) -> list[tuple[str, str]]:
         if value:
             rows.append((match.group(1), value))
     return rows
+
+
+def extract_embedded_json(content: str) -> dict | list | None:
+    """Extract a JSON object embedded in a Markdown table or explanatory text."""
+    decoder = json.JSONDecoder()
+    for index, character in enumerate(content):
+        if character != "{":
+            continue
+        try:
+            parsed, _ = decoder.raw_decode(content[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, (dict, list)):
+            return parsed
+    return None
 
 
 def prettify_inline_records(content: str) -> str:
