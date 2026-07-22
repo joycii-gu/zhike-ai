@@ -45,26 +45,44 @@ def _parse_json_response(content: str) -> dict[str, Any]:
 
 
 def _normalize_report_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Normalize common model wrappers and Chinese field labels."""
-    for wrapper in ("report", "business_report", "result", "data", "output"):
-        nested = payload.get(wrapper)
-        if isinstance(nested, dict):
-            payload = nested
-            break
-
+    """Normalize wrapped, nested, or Chinese-labelled model responses."""
     aliases = {
-        "客户档案": "customer_profile",
-        "客户需求分析": "need_analysis",
-        "业务机会判断": "opportunity_assessment",
-        "跟进建议": "follow_up_plan",
-        "沟通话术": "communication_script",
-        "业务日报": "daily_report",
+        "customer_profile": "customer_profile", "customerprofile": "customer_profile", "客户档案": "customer_profile",
+        "need_analysis": "need_analysis", "needanalysis": "need_analysis", "客户需求分析": "need_analysis",
+        "opportunity_assessment": "opportunity_assessment", "opportunityassessment": "opportunity_assessment", "业务机会判断": "opportunity_assessment",
+        "follow_up_plan": "follow_up_plan", "followupplan": "follow_up_plan", "跟进建议": "follow_up_plan",
+        "communication_script": "communication_script", "communicationscript": "communication_script", "沟通话术": "communication_script",
+        "daily_report": "daily_report", "dailyreport": "daily_report", "业务日报": "daily_report",
     }
-    normalized = dict(payload)
-    for chinese_key, english_key in aliases.items():
-        if english_key not in normalized and chinese_key in payload:
-            normalized[english_key] = payload[chinese_key]
-    return normalized
+
+    def canonical(key: Any) -> str | None:
+        text = str(key).strip().lower().replace(" ", "").replace("-", "_")
+        if text in aliases:
+            return aliases[text]
+        for label, field in aliases.items():
+            if not label.isascii() and label in text:
+                return field
+        return None
+
+    normalized: dict[str, Any] = {}
+
+    def visit(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                field = canonical(key)
+                if field and field not in normalized and value is not None:
+                    normalized[field] = (
+                        value
+                        if isinstance(value, str)
+                        else json.dumps(value, ensure_ascii=False)
+                    )
+                visit(value)
+        elif isinstance(node, list):
+            for item in node:
+                visit(item)
+
+    visit(payload)
+    return {**payload, **normalized}
 
 
 def _setting(name: str, default: str = "") -> str:
