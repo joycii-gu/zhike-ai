@@ -82,7 +82,7 @@ def render_report_content(content: str) -> None:
                     rows.append(f"| {key} | {value.replace('|', '／')} |")
                 st.markdown("| 字段 | 内容 |\n|---|---|\n" + "\n".join(rows))
             else:
-                st.markdown(content)
+                st.markdown(content.replace("<br>", "；"))
             return
 
     if isinstance(parsed, dict):
@@ -171,7 +171,32 @@ def prettify_inline_records(content: str) -> str:
             rendered.append("；".join(parts))
         return "<br>".join(f"• {line}" for line in rendered)
 
-    return pattern.sub(replace_list, content)
+    content = pattern.sub(replace_list, content)
+
+    # Some model responses emit each customer as a standalone Python dict.
+    dict_pattern = re.compile(r"\{[^{}\n]*\}")
+    key_labels = {
+        "序号": "序号", "name": "客户", "industry": "行业", "stage": "阶段",
+        "priority": "优先级", "opportunity": "机会", "key_concerns": "关注点",
+        "next_action": "下一步", "risk": "风险",
+    }
+
+    def replace_dict(match: re.Match[str]) -> str:
+        try:
+            record = ast.literal_eval(match.group(0))
+        except (ValueError, SyntaxError):
+            return match.group(0)
+        if not isinstance(record, dict):
+            return match.group(0)
+        parts = []
+        for key, value in record.items():
+            label = key_labels.get(str(key), str(key))
+            if isinstance(value, list):
+                value = "、".join(str(item) for item in value)
+            parts.append(f"{label}：{value}")
+        return "<br>".join(parts)
+
+    return dict_pattern.sub(replace_dict, content)
 
 st.markdown(
     """
