@@ -63,12 +63,67 @@ def _api_trace(skill_id: str, name: str) -> SkillTraceEntry:
 
 
 def _extract_output(payload: dict[str, Any]) -> str:
-    """Accept the narrow step contract while tolerating common wrapper names."""
-    for key in ("output", "result", "content", "markdown"):
-        value = payload.get(key)
-        if isinstance(value, str) and value.strip():
+    """Convert common JSON response shapes into reviewer-friendly Markdown.
+
+    Some OpenAI-compatible models return ``{"output": "..."}``, while
+    others return a directly structured object such as ``{"跟进时间": ...}``.
+    Both are valid model answers for a Skill; only rejecting the latter causes
+    unnecessary local fallbacks and hides successful API calls.
+    """
+
+    def format_value(value: Any, depth: int = 0) -> str:
+        if isinstance(value, str):
             return value.strip()
-    raise ValueError("Skill 返回内容缺少 output 字段")
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, list):
+            lines: list[str] = []
+            for item in value:
+                rendered = format_value(item, depth + 1)
+                if rendered:
+                    lines.append(f"- {rendered}")
+            return "\n".join(lines)
+        if isinstance(value, dict):
+            lines = []
+            for key, nested in value.items():
+                rendered = format_value(nested, depth + 1)
+                if not rendered:
+                    continue
+                if isinstance(nested, (dict, list)):
+                    heading = "###" if depth == 0 else "####"
+                    lines.append(f"{heading} {key}\n{rendered}")
+                else:
+                    lines.append(f"- **{key}**：{rendered}")
+            return "\n".join(lines)
+        return ""
+
+    for key in ("output", "result", "content", "markdown", "data", "response", "answer"):
+        if key not in payload:
+            continue
+        rendered = format_value(payload[key])
+        if rendered:
+            return rendered
+
+    rendered = format_value(payload)
+    if rendered:
+        return rendered
+    raise ValueError("Skill 返回内容为空")
+
+
+def _normalize_parsed_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Unwrap a JSON object returned inside a common parse-step wrapper."""
+    for key in ("data", "result", "output", "response"):
+        value = payload.get(key)
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict):
+                return parsed
+    return payload
 
 
 def _context_for_step(
@@ -134,7 +189,7 @@ def run_chained_workflow(
             if skill_id == "customer_info_parse":
                 if not isinstance(payload, dict) or not payload:
                     raise ValueError("客户信息解析结果为空")
-                parsed = payload
+                parsed = _normalize_parsed_payload(payload)
             else:
                 if report_field is None:
                     raise RuntimeError("Workflow 定义错误：缺少报告字段")

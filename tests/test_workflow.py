@@ -49,6 +49,24 @@ def test_local_workflow_has_a_full_trace() -> None:
     assert all(item["status"] == "local" for item in result["trace"])
 
 
+def test_structured_skill_response_is_not_mistaken_for_fallback() -> None:
+    def structured_model_call(_system: str, user: str) -> dict:
+        if "Skill 1" in user:
+            return {"facts": {"customer_name": "李总"}, "inferences": [], "unknowns": [], "evidence": []}
+        return {
+            "行动重点": ["确认客户预算范围", "准备演示材料"],
+            "风险提示": "预算尚未确认",
+        }
+
+    result = run_chained_workflow(
+        structured_model_call,
+        "李总希望下周沟通 AI 客户跟进方案，预算暂未确定。",
+        get_mock_customers(),
+    )
+    assert all(item["status"] == "api" for item in result["trace"])
+    assert "行动重点" in result["report"]["follow_up_plan"]
+
+
 def test_synscale_is_preferred_when_configured() -> None:
     values = {"SYNSCALE_API_KEY": "test-synscale-key"}
 
@@ -66,5 +84,6 @@ if __name__ == "__main__":
     test_chained_workflow_calls_all_seven_skills()
     test_step_failure_falls_back_without_breaking_report()
     test_local_workflow_has_a_full_trace()
+    test_structured_skill_response_is_not_mistaken_for_fallback()
     test_synscale_is_preferred_when_configured()
     print("W3 workflow regression tests passed")
