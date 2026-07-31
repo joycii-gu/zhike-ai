@@ -18,6 +18,11 @@ from .workflow import AgentRunResult, run_chained_workflow, run_local_workflow
 
 load_dotenv()
 
+# The W2 reward guide specifies this as the public SynScale business gateway.
+# Keep it fixed for the competition runtime: a stale Secrets value must never
+# silently redirect a request to an earlier MiniMax or platform gateway.
+SYNSCALE_REWARD_BASE_URL = "http://synscale.onesyn.ai/v1"
+
 
 def _parse_json_response(content: Any) -> dict[str, Any]:
     """Parse JSON returned with optional reasoning or Markdown wrappers."""
@@ -255,7 +260,7 @@ class SynScaleProvider(BusinessAgentProvider):
         self.model = _setting("SYNSCALE_MODEL", "deepseek-v4-pro")
         self.client = OpenAI(
             api_key=api_key,
-            base_url=_setting("SYNSCALE_BASE_URL", "http://synscale.onesyn.ai/v1"),
+            base_url=SYNSCALE_REWARD_BASE_URL,
             timeout=90.0,
             max_retries=2,
         )
@@ -282,7 +287,7 @@ class SynScaleProvider(BusinessAgentProvider):
             self._call_json,
             customer_input,
             mock_customers,
-            runtime_label=f"SynScale API · {self.model}",
+            runtime_label=f"SynScale API · {self.model} · synscale.onesyn.ai",
         )
 
 
