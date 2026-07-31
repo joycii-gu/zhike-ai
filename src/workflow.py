@@ -177,25 +177,41 @@ def run_chained_workflow(
     for skill_id, name, report_field in SKILL_STEPS:
         try:
             context = _context_for_step(skill_id, parsed, outputs)
-            payload = call_json(
-                SKILL_SYSTEM_PROMPT,
-                build_skill_prompt(
-                    skill_id,
-                    customer_input=customer_input,
-                    context=context,
-                    mock_customers=mock_customers,
-                ),
+            prompt = build_skill_prompt(
+                skill_id,
+                customer_input=customer_input,
+                context=context,
+                mock_customers=mock_customers,
             )
-            if skill_id == "customer_info_parse":
-                if not isinstance(payload, dict) or not payload:
-                    raise ValueError("客户信息解析结果为空")
-                parsed = _normalize_parsed_payload(payload)
-            else:
-                if report_field is None:
-                    raise RuntimeError("Workflow 定义错误：缺少报告字段")
-                outputs[report_field] = _extract_output(payload)
+
+            # Model output can occasionally be truncated or fail JSON parsing.
+            # Retry the isolated Skill once before using deterministic local
+            # fallback; never rerun already successful upstream Skills.
+            last_error: Exception | None = None
+            completed_after_retry = False
+            for attempt in range(2):
+                try:
+                    payload = call_json(SKILL_SYSTEM_PROMPT, prompt)
+                    if skill_id == "customer_info_parse":
+                        if not isinstance(payload, dict) or not payload:
+                            raise ValueError("客户信息解析结果为空")
+                        parsed = _normalize_parsed_payload(payload)
+                    else:
+                        if report_field is None:
+                            raise RuntimeError("Workflow 定义错误：缺少报告字段")
+                        outputs[report_field] = _extract_output(payload)
+                    completed_after_retry = attempt == 1
+                    last_error = None
+                    break
+                except Exception as exc:
+                    last_error = exc
+
+            if last_error is not None:
+                raise last_error
             entry = _api_trace(skill_id, name)
             entry["runtime"] = runtime_label
+            if completed_after_retry:
+                entry["detail"] = "首次输出未通过校验，重试后已完成结构化输出"
             trace.append(entry)
         except Exception as exc:
             if skill_id == "customer_info_parse":

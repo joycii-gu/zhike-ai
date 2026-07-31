@@ -30,7 +30,7 @@ def test_step_failure_falls_back_without_breaking_report() -> None:
     def unstable_call(system: str, user: str) -> dict:
         nonlocal call_count
         call_count += 1
-        if call_count == 3:
+        if call_count in (3, 4):
             raise RuntimeError("simulated provider error")
         return fake_model_call(system, user)
 
@@ -41,6 +41,25 @@ def test_step_failure_falls_back_without_breaking_report() -> None:
     )
     assert any(item["status"] == "fallback" for item in result["trace"])
     assert all(result["report"].values())
+
+
+def test_transient_skill_failure_retries_before_fallback() -> None:
+    call_count = 0
+
+    def transient_call(system: str, user: str) -> dict:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise RuntimeError("transient provider error")
+        return fake_model_call(system, user)
+
+    result = run_chained_workflow(
+        transient_call,
+        "李总希望了解 AI 客户跟进方案，并希望下周沟通。",
+        get_mock_customers(),
+    )
+    assert all(item["status"] == "api" for item in result["trace"])
+    assert result["trace"][1]["detail"].startswith("首次输出未通过校验")
 
 
 def test_local_workflow_has_a_full_trace() -> None:
@@ -83,6 +102,7 @@ def test_synscale_is_preferred_when_configured() -> None:
 if __name__ == "__main__":
     test_chained_workflow_calls_all_seven_skills()
     test_step_failure_falls_back_without_breaking_report()
+    test_transient_skill_failure_retries_before_fallback()
     test_local_workflow_has_a_full_trace()
     test_structured_skill_response_is_not_mistaken_for_fallback()
     test_synscale_is_preferred_when_configured()
