@@ -9,7 +9,11 @@ import re
 
 import streamlit as st
 
-from src.agent import business_agent_with_trace, has_api_provider, runtime_mode
+from src.agent import (
+    business_agent_with_trace,
+    has_api_provider,
+    runtime_mode,
+)
 from src.kpi_agent import (
     EVENT_LABELS,
     build_kpi_dashboard,

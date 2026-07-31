@@ -18,11 +18,6 @@ from .workflow import AgentRunResult, run_chained_workflow, run_local_workflow
 
 load_dotenv()
 
-# The W2 reward guide specifies this as the public SynScale business gateway.
-# Keep it fixed for the competition runtime: a stale Secrets value must never
-# silently redirect a request to an earlier MiniMax or platform gateway.
-SYNSCALE_REWARD_BASE_URL = "http://synscale.onesyn.ai/v1"
-
 
 def _parse_json_response(content: Any) -> dict[str, Any]:
     """Parse JSON returned with optional reasoning or Markdown wrappers."""
@@ -248,7 +243,7 @@ class MiniMaxProvider(BusinessAgentProvider):
 
 
 class SynScaleProvider(BusinessAgentProvider):
-    """SynScale adapter using the provider's recommended Responses endpoint."""
+    """Optional SynScale OpenAI-compatible adapter."""
 
     def __init__(self) -> None:
         from openai import OpenAI
@@ -260,25 +255,22 @@ class SynScaleProvider(BusinessAgentProvider):
         self.model = _setting("SYNSCALE_MODEL", "deepseek-v4-pro")
         self.client = OpenAI(
             api_key=api_key,
-            base_url=SYNSCALE_REWARD_BASE_URL,
+            base_url=_setting("SYNSCALE_BASE_URL", "http://synscale.onesyn.ai/v1"),
             timeout=90.0,
             max_retries=2,
         )
 
     def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
-        # The SynScale reward guide recommends POST /responses for new
-        # integrations.  Use that endpoint directly instead of the merely
-        # compatible /chat/completions path, so provider-side usage records
-        # and model behaviour follow the documented integration route.
-        response = self.client.responses.create(
+        response = self.client.chat.completions.create(
             model=self.model,
-            input=(
-                f"系统指令：\n{system_prompt}\n\n"
-                f"用户任务：\n{user_prompt}"
-            ),
-            max_output_tokens=1200,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1200,
         )
-        return _parse_json_response(getattr(response, "output_text", "") or "")
+        return _parse_json_response(response.choices[0].message.content or "")
 
     def generate_with_trace(
         self, customer_input: str, mock_customers: list[dict[str, Any]]
@@ -287,7 +279,7 @@ class SynScaleProvider(BusinessAgentProvider):
             self._call_json,
             customer_input,
             mock_customers,
-            runtime_label=f"SynScale API · {self.model} · synscale.onesyn.ai",
+            runtime_label=f"SynScale API · {self.model}",
         )
 
 
@@ -341,10 +333,10 @@ class MockProvider(BusinessAgentProvider):
 
 
 def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, str]:
-    if not force_mock and _setting("SYNSCALE_API_KEY"):
-        return SynScaleProvider(), "SynScale API"
     if not force_mock and _setting_any(("MINIMAX_API_KEY", "APP_KEY")):
         return MiniMaxProvider(), "MiniMax API"
+    if not force_mock and _setting("SYNSCALE_API_KEY"):
+        return SynScaleProvider(), "SynScale API"
     if not force_mock and _setting("NVIDIA_API_KEY"):
         return NvidiaNimProvider(), "NVIDIA NIM API"
     if not force_mock and _setting("OPENAI_API_KEY"):
