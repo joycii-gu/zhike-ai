@@ -42,17 +42,17 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-若配置 MiniMax API，应用使用 API 生成业务报告；未配置密钥或开启“强制使用 Mock 演示模式”时，系统将使用本地 Mock Skills Workflow，便于稳定演示和回归测试。
+W3 默认使用 W2 获奖算力 SynScale 生成业务报告；如同时配置 SynScale 与 MiniMax，系统优先选择 SynScale，MiniMax 作为备用 Provider。未配置任何模型密钥或开启“强制使用 Mock 演示模式”时，系统使用本地 Mock Skills Workflow，便于稳定演示和回归测试。
 
 本地 API 配置示例（不要将真实密钥提交到仓库）：
 
 ```text
-MINIMAX_API_KEY=your_key
-MINIMAX_BASE_URL=https://api.minimaxi.com/v1
-MINIMAX_MODEL=MiniMax-M2.7
+SYNSCALE_API_KEY=sk-syn-your_key
+SYNSCALE_BASE_URL=http://synscale.onesyn.ai/v1
+SYNSCALE_MODEL=deepseek-v4-pro
 ```
 
-部署到 Streamlit Community Cloud 时，将同名字段写入 **App Settings → Secrets**。
+部署到 Streamlit Community Cloud 时，将同名字段写入 **App Settings → Secrets**。可选 MiniMax 备用配置见 `.env.example`；不要将真实密钥提交到仓库。
 
 ## 项目结构
 

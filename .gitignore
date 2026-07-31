@@ -1,5 +1,5 @@
 .env
+.streamlit/secrets.toml
 __pycache__/
 *.py[cod]
-.streamlit/secrets.toml
 .runtime_packages/

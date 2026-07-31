@@ -1,5 +1,8 @@
 """Tests for real Skills orchestration without making any external API call."""
 
+from unittest.mock import patch
+
+from src.agent import SynScaleProvider, _select_provider
 from src.mock_customers import get_mock_customers
 from src.workflow import run_chained_workflow, run_local_workflow
 
@@ -46,8 +49,22 @@ def test_local_workflow_has_a_full_trace() -> None:
     assert all(item["status"] == "local" for item in result["trace"])
 
 
+def test_synscale_is_preferred_when_configured() -> None:
+    values = {"SYNSCALE_API_KEY": "test-synscale-key"}
+
+    def fake_setting(name: str, default: str = "") -> str:
+        return values.get(name, default)
+
+    with patch("src.agent._setting", side_effect=fake_setting):
+        provider, label = _select_provider()
+
+    assert isinstance(provider, SynScaleProvider)
+    assert label == "SynScale API"
+
+
 if __name__ == "__main__":
     test_chained_workflow_calls_all_seven_skills()
     test_step_failure_falls_back_without_breaking_report()
     test_local_workflow_has_a_full_trace()
+    test_synscale_is_preferred_when_configured()
     print("W3 workflow regression tests passed")

@@ -1,4 +1,4 @@
-"""Provider-neutral business agent with OpenAI and deterministic Mock modes."""
+"""Provider-neutral business agent with SynScale, MiniMax and local fallback modes."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _parse_json_response(content: Any) -> dict[str, Any]:
             for item in content
         )
     if not isinstance(content, str):
-        raise RuntimeError("MiniMax 返回内容为空或格式不支持，请检查模型输出。")
+        raise RuntimeError("模型返回内容为空或格式不支持，请检查模型输出。")
     cleaned = content.strip()
     # MiniMax may return a closed or truncated reasoning block.
     if "</think>" in cleaned:
@@ -60,7 +60,7 @@ def _parse_json_response(content: Any) -> dict[str, Any]:
             continue
         if isinstance(payload, dict):
             return payload
-    raise RuntimeError("MiniMax 返回内容不是有效 JSON，请检查模型输出或提示词。")
+    raise RuntimeError("模型返回内容不是有效 JSON，请检查模型输出或提示词。")
 
 
 def _normalize_report_payload(payload: dict[str, Any]) -> dict[str, Any]:
@@ -242,6 +242,47 @@ class MiniMaxProvider(BusinessAgentProvider):
         )
 
 
+class SynScaleProvider(BusinessAgentProvider):
+    """SynScale OpenAI-compatible adapter, preferred for the W3 reward runtime."""
+
+    def __init__(self) -> None:
+        from openai import OpenAI
+
+        api_key = _setting("SYNSCALE_API_KEY")
+        if not api_key:
+            raise RuntimeError("未找到 SYNSCALE_API_KEY，请在 .env 或 Streamlit Secrets 中配置。")
+
+        self.model = _setting("SYNSCALE_MODEL", "deepseek-v4-pro")
+        self.client = OpenAI(
+            api_key=api_key,
+            base_url=_setting("SYNSCALE_BASE_URL", "http://synscale.onesyn.ai/v1"),
+            timeout=90.0,
+            max_retries=2,
+        )
+
+    def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        # SynScale documents the standard Chat Completions parameters.  JSON is
+        # required by the prompt and parsed defensively below, without relying
+        # on an optional provider-specific response_format parameter.
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_tokens=1200,
+        )
+        return _parse_json_response(response.choices[0].message.content or "")
+
+    def generate_with_trace(
+        self, customer_input: str, mock_customers: list[dict[str, Any]]
+    ) -> AgentRunResult:
+        return run_chained_workflow(
+            self._call_json, customer_input, mock_customers, runtime_label="SynScale API"
+        )
+
+
 class NvidiaNimProvider(BusinessAgentProvider):
     """NVIDIA NIM adapter using its OpenAI-compatible Chat Completions API."""
 
@@ -292,6 +333,8 @@ class MockProvider(BusinessAgentProvider):
 
 
 def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, str]:
+    if not force_mock and _setting("SYNSCALE_API_KEY"):
+        return SynScaleProvider(), "SynScale API"
     if not force_mock and _setting_any(("MINIMAX_API_KEY", "APP_KEY")):
         return MiniMaxProvider(), "MiniMax API"
     if not force_mock and _setting("NVIDIA_API_KEY"):
@@ -304,7 +347,8 @@ def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, s
 def has_api_provider() -> bool:
     """Whether a model provider is configured through env or cloud secrets."""
     return bool(
-        _setting_any(("MINIMAX_API_KEY", "APP_KEY"))
+        _setting("SYNSCALE_API_KEY")
+        or _setting_any(("MINIMAX_API_KEY", "APP_KEY"))
         or _setting("NVIDIA_API_KEY")
         or _setting("OPENAI_API_KEY")
     )

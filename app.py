@@ -339,7 +339,8 @@ def render_kpi_dashboard() -> None:
     )
 
 api_ready = has_api_provider()
-runtime_label = "MiniMax API 已连接" if api_ready else "Mock Workflow 备用"
+runtime_label = runtime_mode() if api_ready else "Mock Skills Workflow"
+runtime_status = f"● {runtime_label} 已配置 / Connected" if api_ready else "● Mock Skills Workflow"
 
 st.markdown(
     f"""
@@ -376,7 +377,7 @@ st.markdown(
     f"""
 <div class="status-row">
   <span class="status-pill prototype">W3 Agent Demo</span>
-  <span class="status-pill {'online' if api_ready else ''}">{'● MiniMax-M2.7 API 已配置 / Connected' if api_ready else '● Mock Skills Workflow'}</span>
+  <span class="status-pill {'online' if api_ready else ''}">{runtime_status}</span>
   <span class="status-pill">会话内 KPI / No Database</span>
 </div>
 <div class="step-strip">
