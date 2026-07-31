@@ -243,7 +243,7 @@ class MiniMaxProvider(BusinessAgentProvider):
 
 
 class SynScaleProvider(BusinessAgentProvider):
-    """SynScale OpenAI-compatible adapter, preferred for the W3 reward runtime."""
+    """SynScale adapter using the provider's recommended Responses endpoint."""
 
     def __init__(self) -> None:
         from openai import OpenAI
@@ -261,25 +261,28 @@ class SynScaleProvider(BusinessAgentProvider):
         )
 
     def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
-        # SynScale documents the standard Chat Completions parameters.  JSON is
-        # required by the prompt and parsed defensively below, without relying
-        # on an optional provider-specific response_format parameter.
-        response = self.client.chat.completions.create(
+        # The SynScale reward guide recommends POST /responses for new
+        # integrations.  Use that endpoint directly instead of the merely
+        # compatible /chat/completions path, so provider-side usage records
+        # and model behaviour follow the documented integration route.
+        response = self.client.responses.create(
             model=self.model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt},
-            ],
-            temperature=0.2,
-            max_tokens=1200,
+            input=(
+                f"系统指令：\n{system_prompt}\n\n"
+                f"用户任务：\n{user_prompt}"
+            ),
+            max_output_tokens=1200,
         )
-        return _parse_json_response(response.choices[0].message.content or "")
+        return _parse_json_response(getattr(response, "output_text", "") or "")
 
     def generate_with_trace(
         self, customer_input: str, mock_customers: list[dict[str, Any]]
     ) -> AgentRunResult:
         return run_chained_workflow(
-            self._call_json, customer_input, mock_customers, runtime_label="SynScale API"
+            self._call_json,
+            customer_input,
+            mock_customers,
+            runtime_label=f"SynScale API · {self.model}",
         )
 
 

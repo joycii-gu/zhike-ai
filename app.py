@@ -80,6 +80,7 @@ st.markdown(
     .trace-step {font-size:.67rem; color:#718492; margin-bottom:.27rem;}
     .trace-name {font-size:.75rem; line-height:1.35; color:#284354; font-weight:650;}
     .trace-state {margin-top:.38rem; font-size:.68rem; font-weight:700;}
+    .trace-runtime {margin-top:.24rem; font-size:.61rem; line-height:1.25; color:#718492; overflow-wrap:anywhere;}
     .trace-api {color:#047857;}.trace-local {color:#365267;}.trace-fallback {color:#b45309;}
     .footer-note {padding:.9rem 1rem; border-radius:12px; background:#f8fafc; border:1px solid #e5e7eb; color:#64748b; font-size:.82rem;}
     div[data-testid="stTabs"] button {font-weight: 650;}
@@ -251,10 +252,12 @@ def render_execution_trace(trace: list[dict]) -> None:
         status = str(entry.get("status", "local"))
         safe_status = status if status in labels else "local"
         name = str(entry.get("name", "Skill"))
+        runtime = str(entry.get("runtime", "Unknown runtime"))
         cards.append(
             f'<div class="trace-item"><div class="trace-step">SKILL {index}</div>'
             f'<div class="trace-name">{name}</div>'
-            f'<div class="trace-state trace-{safe_status}">{labels[safe_status]}</div></div>'
+            f'<div class="trace-state trace-{safe_status}">{labels[safe_status]}</div>'
+            f'<div class="trace-runtime">{runtime}</div></div>'
         )
     st.markdown(
         '<div class="trace-title"><h4>⚙ Skills 执行轨迹 / Agent Execution Trace</h4>'
