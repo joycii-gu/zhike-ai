@@ -1,55 +1,59 @@
-# 知客 ZhiKe AI — Skills（S3W2）
+# 知客 ZhiKe AI — Skills（S3W3）
 
-本目录是 S3W1 Specs 中「4. Agent Workflow 设计」与「3. 产品需求设计」对应的 Skills 定义与 W2 运行契约，用于 S3W2 赛段提交。`zhike-ai/src/skills.py` 提供本地 Mock 模式下的顺序执行适配层，`zhike-ai/app.py` 是网页 Prototype 主入口。
+本目录提供知客 ZhiKe AI 在 S3W3 半决赛中使用的 Skills 交付说明。W3 将 W2 已验证的客户处理能力整合为可交互 Agent：网页负责收集业务目标、客户记录和人工确认的跟进反馈；Agent Runtime 依次调度 Skills；KPI 层只对人工确认事件进行确定性计算。
 
-## 目录结构与 FR 对应关系
+本目录不是一组可随意拼接的长 Prompt。每个 Skill 都定义了职责、输入、输出、事实边界和验收规则，可单独检查，也可按既定顺序构成完整业务链。
 
-```
+## 目录与运行时步骤对应关系
+
+```text
 zhike-ai/
 ├── skills/
-│   ├── customer_profile/        # FR1 客户信息解析 + FR2 客户档案生成
-│   ├── need_analysis/           # FR3 客户需求分析
-│   ├── opportunity_judgement/   # FR4 业务机会判断
-│   ├── follow_up/               # FR5 跟进建议
-│   ├── communication/           # FR6 沟通话术
-│   └── daily_report/            # FR7 业务日报
+│   ├── customer_info_parse/       # Skill 1：客户信息解析
+│   ├── customer_profile/          # Skill 2：客户档案生成
+│   ├── need_analysis/             # Skill 3：客户需求分析
+│   ├── opportunity_judgement/     # Skill 4：业务机会判断
+│   ├── follow_up/                 # Skill 5：跟进建议
+│   ├── communication/             # Skill 6：沟通话术
+│   └── daily_report/              # Skill 7：业务日报
 ```
 
-`customer_profile` 内部包含"信息解析"与"档案生成"两个步骤（对应 Specs 中的两个独立 Agent），因为二者输入输出强耦合、总是连续执行，合并为一个 Skill 目录管理更符合实际调用方式；其余 5 个 Skill 与 FR3–FR7 一一对应。
+| 顺序 | Skill | 主要输入 | 主要输出 |
+|---:|---|---|---|
+| 1 | 客户信息解析 | 原始客户记录 | 事实、推断、未知和证据片段 |
+| 2 | 客户档案生成 | 解析结果 | 统一、可浏览的客户档案 |
+| 3 | 客户需求分析 | 档案与证据 | 显性需求、潜在痛点、待确认问题 |
+| 4 | 业务机会判断 | 需求分析与信号 | 机会等级、依据、风险 |
+| 5 | 跟进建议 | 档案、需求、机会判断 | 动作、时点、目标与材料 |
+| 6 | 沟通话术 | 关注点、渠道、跟进目标 | 可编辑沟通参考话术 |
+| 7 | 业务日报 | 当前客户结果与演示 Mock 集合 | 跨客户待办、排序和风险汇总 |
 
-## Workflow 调用顺序
-
-```
-customer_profile → need_analysis → opportunity_judgement → follow_up → communication
-                                                                    ↘
-                                                              daily_report（多客户跨天汇总，最后单独触发）
-```
-
-每个 SKILL.md 内的"输入"章节都明确写了它依赖哪个上游 Skill 的输出，可以按此顺序串联成完整 Workflow；也可以单独拿某一个 Skill 出来单测，定位问题。
-
-## 每个 SKILL.md 包含什么
-
-- **定位**：这个 Skill 在整体 Workflow 里解决什么问题；
-- **核心规则**：对应 Specs 验收标准里"不能做什么"（如不能虚构预算、不能因客户感兴趣就判高意向等）；
-- **输入 / 输出 JSON 结构**：可直接被程序解析，用于串联下一个 Skill；
-- **验收标准**：直接引用 Specs §7 对应指标的合格标准，便于测试时逐项打分；
-- **示例**：完整的输入→输出示例，可直接用于验证 Skill 是否跑通。
-
-## 如何验证
-
-1. 任选一个 SKILL.md，把其中的规则和 JSON 结构作为 system prompt，把"示例"里的输入喂给任意 LLM，检查输出是否符合该 Skill 的"验收标准"表格；
-2. 按 Workflow 调用顺序把 6 个 Skill 串起来，用 Specs §7.10 建议的 3 个不同行业客户样例整体跑一遍，按 §7 的 100 分制评分表打分；
-3. 也可参考仓库内的 `prototype/` HTML 文件了解界面交互设计；W2 实际可运行入口是 `app.py`，前端不直接持有模型 API Key。
-
-## W2 运行对应关系
+## W3 运行方式
 
 ```text
 app.py
-  → src/agent.py
-    → MockProvider
-      → src/skills.py
-        → customer_profile → need_analysis → opportunity_judgement
-          → follow_up → communication → daily_report
+  → src/agent.py（Provider 选择：MiniMax API / Mock）
+    → src/workflow.py（链式调度、上下文剪裁、字段校验、执行轨迹）
+      → 7 个 Skills 依次执行
+        → src/kpi_agent.py（人工反馈驱动的 KPI 与行动层）
 ```
 
-真实模型或 HermesAgent 可以在后续通过 `BusinessAgentProvider` 接口替换，不改变网页层和公开报告结构。
+在 API 模式下，前一个 Skill 的结构化输出会被压缩为后一个 Skill 必需的上下文；后续步骤不会反复读取全部原始记录。若某一步模型返回异常或格式不符合约束，系统仅对该步骤启用本地安全回退，并在页面执行轨迹中标记 `fallback`，避免整份报告不可用。
+
+Mock 模式用于离线演示与回归测试；MiniMax API 模式用于真实模型生成。两种模式都遵守相同的输出结构和事实边界。Mock 客户仅服务于业务日报的跨客户演示，不代表数据库或历史客户管理。
+
+## 验证方式
+
+```bash
+python tests/test_workflow.py
+python tests/test_kpi_agent.py
+```
+
+评审可使用 `docs/04_demo_case.md` 的三个案例运行网页 Demo，并按 `docs/10_w3_evaluation.md` 评分。已执行的本地测试与待补充的 API 验收记录见 `docs/11_w3_test_evidence.md`。
+
+## 事实边界
+
+- 原文明确出现的信息标为事实；基于上下文的判断标为推断；缺失信息标为未知或待确认。
+- 不虚构预算、决策权限、成交概率、产品效果或未验证承诺。
+- KPI 不由模型文本自动计数，只由业务员确认的跟进事件改变。
+- 话术与机会判断均为辅助建议，最终发送和业务决策由人工确认。

@@ -1,54 +1,40 @@
 # ZhiKe AI
 
-## An AI Business Agent for Salespeople and Client-facing Professionals
+## A Goal-Driven AI Business Agent for Salespeople and Client-facing Professionals
 
-> Dishui Lake Global OPC AI Challenge · S3 Global Youth Development Program · W2 Semifinal · X Innovation Track
+> Dishui Lake Global OPC AI Challenge · S3 Global Youth Development Program · W3 Semifinal · X Innovation Track
 
-### 1. Overview
+ZhiKe AI helps salespeople, client managers, course consultants, business service consultants, and other client-facing professionals turn raw customer records into structured profiles, need analysis, opportunity assessment, follow-up plans, communication scripts, and daily business reports. In W3, it adds an in-session loop of **business goals → confirmed follow-up feedback → KPI progress → next actions**.
 
-ZhiKe AI is an AI business agent for salespeople, client managers, course consultants, business service consultants, other client-facing professionals, and small business operators. It turns fragmented customer notes and communication records into customer profiles, need analysis, business opportunity assessment, follow-up suggestions, communication scripts, and daily business reports.
+ZhiKe AI is neither a generic chatbot nor a data-storage-first CRM. It operationalizes customer-understanding and action-planning methods as an evaluable Skills workflow. KPI progress is driven only by user-confirmed business events; the model is not allowed to invent achieved results.
 
-ZhiKe AI is not a generic chatbot built around open-ended conversations. It is also not a traditional CRM focused primarily on storing customer data. It is a structured AI workflow designed for everyday customer follow-up tasks, with multiple Skills processing information in sequence and clear labels separating facts, inferences, and unknowns.
+## Core Agent Loop
 
-The Chinese name “ZhiKe” originally referred to a person responsible for receiving visitors, understanding their purpose, and arranging the appropriate response. The project adapts that role into an AI assistant that helps client-facing professionals understand customers and convert scattered information into clear business actions.
+**Customer Input → Customer Profile → Need Analysis → Opportunity Assessment → Follow-up Plan → Communication Script → Daily Business Report → Follow-up Feedback → KPI and Action Adjustment**
 
-### 2. Core Workflow
+- **Customer processing:** Converts unstructured notes into traceable business outputs while separating facts, inferences, and unknowns.
+- **Feedback state:** The user confirms events such as an effective conversation, need confirmation, completed demo, or priority-customer advancement.
+- **KPI action layer:** Calculates progress from confirmed events, flags execution risks, and maintains an in-session priority action queue.
 
-**Customer Input → Customer Profile → Need Analysis → Opportunity Assessment → Follow-up Suggestions → Communication Script → Daily Business Report**
+## W3 Agent Demo
 
-- **Customer Input:** Accept customer notes, chat records, or call summaries.
-- **Customer Profile:** Extract identity, industry, role, needs, budget signals, and current stage.
-- **Need Analysis:** Separate explicit needs, potential pain points, and open questions.
-- **Opportunity Assessment:** Evaluate opportunity level using intent, budget, timing, decision conditions, and risks.
-- **Follow-up Suggestions:** Recommend timing, discussion priorities, preparation materials, and next actions.
-- **Communication Script:** Generate editable messages for chat, phone calls, or meeting invitations.
-- **Daily Business Report:** Summarize priority customers, tasks, risks, and next-day actions.
+The current Streamlit application demonstrates a deliverable, interactive business Agent. It is not presented as a complete commercial system.
 
-### 3. W2 Web Demo
+1. Set weekly or monthly business goals.
+2. Paste customer notes and generate a seven-Skills business report.
+3. Record a user-confirmed follow-up result in the **KPI & Actions** tab.
+4. Review KPI progress, pace risks, and today's priority actions.
 
-Users can paste raw WeChat conversations, call notes, meeting records, or quick business notes directly. No prior summarization or spreadsheet formatting is required. The page also offers an input-type selector and optional fields for the customer salutation, communication channel, and planned follow-up time. Missing information is labeled as “unknown / to be confirmed.”
+Live demo: <https://zhike-ai-demo.streamlit.app/>
 
-The W2 goal is a runnable web prototype that validates the core workflow, not a complete commercial system. Its intended scope includes:
+### Scope and Data Boundaries
 
-- entering customer notes or communication records;
-- generating a business processing report with one button;
-- producing a customer profile, need analysis, opportunity assessment, follow-up suggestions, communication script, and daily business report;
-- combining the current customer with two or three in-memory mock customers to demonstrate cross-customer aggregation, priority ranking, task consolidation, and global risk alerts;
-- using mock data only for the W2 demonstration, without a real database, historical records, or persistent multi-customer management.
+- KPI metrics only count feedback confirmed by the user in the current browser session. AI suggestions are never treated as achieved performance.
+- This version has no database, cross-session persistence, accounts, multi-user permissions, or live CRM, WeChat, or calendar integration.
+- W2 mock customers remain limited to the cross-customer daily-report demonstration. W3 customer state and KPI data are separate, in-session demo data.
+- Scripts, opportunity assessments, and business recommendations remain subject to human review and final decision-making.
 
-W2 does not include user accounts, a database, cross-session persistence, live CRM integration, automatic WeChat access, business card OCR, calendar synchronization, multi-user permissions, or payments.
-
-### 4. Highlights
-
-1. **Structured business workflow:** Replaces open-ended Q&A and repeated prompting with a defined business process.
-2. **Reduced hallucination risk:** Separates facts, inferences, and unknowns instead of presenting missing information as fact.
-3. **Multi-step Skills pipeline:** Makes each processing stage easier to evaluate, debug, and improve independently.
-4. **Cross-customer daily report demonstration:** Uses in-memory mock data to validate aggregation, ranking, task, and risk logic.
-5. **Clear expansion path:** Can evolve from an individual productivity tool into team and business service scenarios.
-
-### 5. Quick Start
-
-Once the W2 Demo includes `app.py` and `requirements.txt`, run:
+## Quick Start
 
 ```bash
 cd zhike-ai
@@ -56,98 +42,75 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-After startup, open the local URL shown in the terminal to try the demo.
+When a MiniMax API key is configured, the app uses the API for business report generation. Without a key, or with **Force Mock Mode** enabled, it runs the local Mock Skills Workflow for stable demonstrations and regression tests.
 
-### 6. Project Structure
+Local API configuration example. Never commit a real key to the repository:
 
-The following is the target W2 submission structure. Actual completion status should be verified against the repository.
+```text
+MINIMAX_API_KEY=your_key
+MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+MINIMAX_MODEL=MiniMax-M2.7
+```
+
+For Streamlit Community Cloud, add the same fields in **App Settings → Secrets**.
+
+## Project Structure
 
 ```text
 zhike-ai/
+├── app.py                         # Streamlit W3 Agent Demo
 ├── README.md
 ├── README_EN.md
-├── app.py
 ├── requirements.txt
-├── skills/
-│   ├── README.md
-│   ├── customer_profile/SKILL.md
-│   ├── need_analysis/SKILL.md
-│   ├── opportunity_judgement/SKILL.md
-│   ├── follow_up/SKILL.md
-│   ├── communication/SKILL.md
-│   └── daily_report/SKILL.md
+├── skills/                        # Reviewable business Skill definitions
+├── src/
+│   ├── agent.py                   # Model providers and report fallback layer
+│   ├── workflow.py                # W3 seven-step Skills orchestration and trace
+│   ├── skills.py                  # W2 local Skills pipeline / Mock fallback
+│   ├── kpi_agent.py               # W3 deterministic KPI and session action layer
+│   ├── prompt.py
+│   ├── schema.py
+│   └── mock_customers.py
+├── tests/
+│   ├── test_workflow.py           # W3 Skills orchestration and fallback tests
+│   └── test_kpi_agent.py          # W3 KPI regression tests
 ├── docs/
 │   ├── 01_project_specs.md
 │   ├── 02_skills_workflow.md
 │   ├── 03_prototype_usage.md
 │   ├── 04_demo_case.md
 │   ├── 05_evaluation.md
-│   └── 06_roadmap.md
-├── examples/
-│   ├── case_01_training_customer.md
-│   ├── case_02_course_consultant.md
-│   ├── case_03_enterprise_service.md
-│   └── evaluation_result.md
-├── src/
-│   ├── agent.py
-│   ├── skills.py
-│   ├── prompt.py
-│   ├── schema.py
-│   ├── mock_customers.py
-│   └── __init__.py
-└── prototype/
-    ├── README.md
-    └── zhike_prototype.html
+│   ├── 06_roadmap.md
+│   ├── 07_w3_agent_design.md
+│   ├── 08_kpi_framework.md
+│   ├── 09_w3_demo_script.md
+│   └── 10_w3_evaluation.md
+└── prototype/                     # W2 reference interaction page
 ```
 
-The `skills/` directory contains the reviewable Skill definitions. `src/skills.py` executes their input/output boundaries in Mock mode; the HTML file is a reference interface, while `app.py` remains the W2 main entry point.
+## Verification
 
-### 7. Evaluation
+```bash
+python tests/test_kpi_agent.py
+python tests/test_workflow.py
+```
 
-The project uses a 100-point evaluation framework. Detailed scoring rules and acceptance thresholds are documented in [`docs/05_evaluation.md`](docs/05_evaluation.md).
-
-| Criterion | Evaluation focus |
-|---|---|
-| Information extraction completeness | Completeness and correctness of key facts |
-| Customer profile structure | Consistent, readable, and verifiable fields |
-| Need analysis accuracy | Evidence-based needs, pain points, and barriers |
-| Opportunity assessment rationality | Alignment among rating, evidence, and risks |
-| Follow-up suggestion actionability | Clear action, owner, timing, and objective |
-| Communication script usability | Natural, relevant, and free of unsupported promises |
-| Daily report completeness | Cross-customer aggregation, ranking, tasks, and risks |
-| User operation simplicity | Low-friction completion of the core workflow |
-
-Example evaluation results must be recorded from actual Demo runs. Target scores are not presented as achieved results in advance.
-
-### 8. W2 / W3 / W4 Roadmap
-
-| Stage | Goal |
-|---|---|
-| W2 | Deliver a web demo and validate the end-to-end core workflow and evaluation framework |
-| W3 | Add real multi-customer management, follow-up history, and Agent memory |
-| W4 | Integrate WeChat, CRM, calendars, and business card OCR under appropriate permissions and compliance controls, creating a deployable business application |
-
-### 9. Current Status
-
-This project is currently a W2 prototype. It focuses on validating the core workflow and evaluation criteria. It does not claim to be a full CRM, an enterprise system, or a fully integrated external business platform. The repository contents and a runnable demonstration remain the source of truth for completion status.
+The regression tests confirm that repeated generation does not duplicate a customer, only user-confirmed feedback changes KPI values, and the KPI layer does not require an external model call.
 
 ## Documents
 
 - [Project Specs](docs/01_project_specs.md)
 - [Core Skills / Workflow](docs/02_skills_workflow.md)
-- [Prototype Usage](docs/03_prototype_usage.md)
-- [Demo Case](docs/04_demo_case.md)
-- [Evaluation](docs/05_evaluation.md)
-- [Roadmap](docs/06_roadmap.md)
+- [W3 Agent Design](docs/07_w3_agent_design.md)
+- [KPI Framework](docs/08_kpi_framework.md)
+- [W3 Demo Script](docs/09_w3_demo_script.md)
+- [W3 Evaluation](docs/10_w3_evaluation.md)
+- [W3 Test Evidence](docs/11_w3_test_evidence.md)
 - [Chinese README](README.md)
 
 ## Competition Information
 
-- **Stage:** S3 Global Youth Development Program · W2 Semifinal
-- **Track:** track-103 — X Innovation Track / Team-defined
-- **Stage task:** Submit the key Skills / Workflow defined in the Specs and run the product Prototype
-- **Product positioning:** An AI business processing agent for salespeople and client-facing professionals
-- **Core workflow:** Customer Input → Customer Profile → Need Analysis → Opportunity Assessment → Follow-up Suggestions → Communication Script → Daily Business Report
-- **W2 entry point:** Streamlit web demo (`app.py`)
-- **W2 runtime mode:** MiniMax-M2.7 API when configured; otherwise Mock Skills Workflow runs without an API key
-- **Submission directory:** `zhike-ai/`
+- **Current stage:** S3 Global Youth Development Program · W3 Semifinal
+- **Track:** X Innovation Track
+- **W3 task:** Deliver a runnable Agent that integrates Skills and demonstrates interaction and user value.
+- **Frozen W2 baseline:** Git tag `w2-final`, preserving the W2 prototype version.

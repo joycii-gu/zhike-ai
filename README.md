@@ -1,54 +1,40 @@
 # 知客 ZhiKe AI
 
-## 面向业务员的 AI 业务处理智能体
+## 面向业务员的目标驱动型 AI 业务处理智能体
 
-> 滴水湖全球 OPC 人工智能挑战赛 · S3 全球青年培育赛 · W2 复赛 · X创新赛道
+> 滴水湖全球 OPC 人工智能挑战赛 · S3 全球青年培育赛 · W3 半决赛 · X创新赛道
 
-### 1. 项目简介
+知客 ZhiKe AI 面向销售人员、客户经理、课程顾问、企业服务顾问及其他顾问型业务人员。它将客户备注、聊天摘要、电话纪要等非结构化信息转化为客户档案、需求分析、机会判断、跟进建议、沟通话术和业务日报，并在 W3 阶段加入“业务目标—跟进反馈—KPI 进度—下一步行动”的会话内闭环。
 
-知客 ZhiKe AI 面向销售人员、客户经理、课程顾问、企业服务顾问、其他顾问型业务人员及小微企业经营者。它将零散的客户备注和沟通记录转化为客户档案、需求分析、业务机会判断、跟进建议、沟通话术与业务日报，减少重复整理工作，辅助业务人员明确下一步行动。
+知客不是开放式聊天机器人，也不是以存储数据为主的传统 CRM。它将资深业务人员的客户理解和行动规划方法拆解为可运行、可评测的 Skills 工作流；KPI 数据只来自业务员确认的反馈事件，不由模型自行编造。
 
-知客不是提供开放式问答的普通聊天机器人，也不是以保存客户数据为主的传统 CRM。它是一套围绕日常客户跟进任务设计的结构化 AI 工作流，通过多个 Skills 依次处理信息，并对事实、推断和未知内容进行区分。
+## 核心 Agent 闭环
 
-“知客”原指负责接待来访者、了解来意并妥善安排事务的人。本项目将这一角色延伸为业务员身边的 AI 知客：理解客户、判断需求、生成行动建议，帮助业务人员将分散信息转化为清晰、可执行的业务行动。
+**客户信息输入 → 客户档案 → 需求分析 → 机会判断 → 跟进建议 → 沟通话术 → 业务日报 → 跟进反馈 → KPI 与行动调整**
 
-### 2. 核心业务闭环
+- **客户处理链：** 将原始记录整理为可核查的业务报告，区分事实、推断和未知。
+- **反馈状态层：** 业务员确认“有效沟通、需求确认、完成演示、重点客户推进”等事件。
+- **KPI 行动层：** 基于已确认事件计算进度、识别风险，并形成当前会话内的优先行动队列。
 
-**客户信息输入 → 客户档案生成 → 客户需求分析 → 业务机会判断 → 跟进建议 → 沟通话术 → 业务日报**
+## W3 Agent Demo
 
-- **客户信息输入：** 接收客户备注、聊天记录或电话纪要。
-- **客户档案生成：** 提取客户身份、行业、角色、需求、预算和阶段等字段。
-- **客户需求分析：** 区分显性需求、潜在痛点和待确认问题。
-- **业务机会判断：** 根据意向、预算、时点和风险信号审慎判断机会等级。
-- **跟进建议：** 生成跟进时间、沟通重点、准备材料和优先级。
-- **沟通话术：** 生成可编辑的微信、电话或邀约话术。
-- **业务日报：** 汇总重点客户、待办事项、风险提醒和明日计划。
+当前网页 Demo 用于演示一个可交付、可交互的业务 Agent，而非完整商业系统。
 
-### 3. W2 网页 Demo 功能
+1. 设定本周或本月的业务目标；
+2. 粘贴客户信息，生成 7 个 Skills 的业务处理报告；
+3. 在“🎯 KPI 与行动”页记录业务员确认的跟进结果；
+4. 查看 KPI 进度、节奏风险与今日优先行动。
 
-业务员可以直接粘贴原始微信聊天记录、电话纪要、会议记录或零散备注，无需提前总结或整理成表格。页面支持选择输入类型，并可选补充客户称谓、沟通渠道和计划跟进时间；缺失信息会被标记为“未知/待确认”。
+在线演示：<https://zhike-ai-demo.streamlit.app/>
 
-W2 阶段目标是交付一个可运行网页 Demo，用于验证核心业务闭环，而非建设完整商业系统。Demo 设计范围包括：
+### 数据与能力边界
 
-- 输入客户信息或沟通记录；
-- 点击一次按钮生成业务处理报告；
-- 输出客户档案、需求分析、机会判断、跟进建议、沟通话术和业务日报；
-- 将当前输入客户与后端内存中预置的 2—3 个 Mock 今日客户联合分析，演示跨客户汇总、优先级排序、待办合并和全局风险提醒；
-- Mock 数据仅用于 W2 演示，不写入数据库，也不代表真实历史记录或真实多客户管理。
+- KPI 仅统计当前浏览器会话中、由业务员确认的反馈；AI 输出不等同于已达成业绩。
+- 当前版本不使用数据库，不提供跨会话持久化、登录、多用户权限或真实 CRM/微信/日历接入。
+- W2 的 Mock 客户仍仅用于跨客户日报演示；W3 的客户状态和 KPI 是独立的会话内演示数据。
+- 话术、机会判断和业务建议均供人工参考，最终发送与决策由业务员确认。
 
-W2 暂不包含登录注册、数据库、跨会话持久化、真实 CRM 接入、微信自动读取、名片 OCR、日历同步、多用户权限和付费系统。
-
-### 4. 项目亮点
-
-1. **结构化业务工作流：** 以固定业务闭环替代开放式问答和反复提示。
-2. **降低模型幻觉：** 明确区分事实、推断与未知，不把缺失信息写成确定事实。
-3. **多级 Skills 链式处理：** 各环节职责清晰，可独立评测、调试和迭代。
-4. **跨客户日报演示：** 通过内存 Mock 数据验证聚合、排序、待办和风险汇总逻辑。
-5. **具备扩展路径：** 可从个人业务员场景逐步扩展到小团队和企业服务场景。
-
-### 5. 快速开始
-
-在 W2 Demo 的 `app.py` 与 `requirements.txt` 文件齐备后，可按以下方式运行：
+## 快速开始
 
 ```bash
 cd zhike-ai
@@ -56,98 +42,75 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-启动成功后，按照终端提示在浏览器中打开本地地址，即可体验 Demo。
+若配置 MiniMax API，应用使用 API 生成业务报告；未配置密钥或开启“强制使用 Mock 演示模式”时，系统将使用本地 Mock Skills Workflow，便于稳定演示和回归测试。
 
-### 6. 项目结构
+本地 API 配置示例（不要将真实密钥提交到仓库）：
 
-以下为 W2 提交目标结构；各文件的实际完成状态以仓库内容为准。
+```text
+MINIMAX_API_KEY=your_key
+MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+MINIMAX_MODEL=MiniMax-M2.7
+```
+
+部署到 Streamlit Community Cloud 时，将同名字段写入 **App Settings → Secrets**。
+
+## 项目结构
 
 ```text
 zhike-ai/
+├── app.py                         # Streamlit W3 Agent Demo
 ├── README.md
 ├── README_EN.md
-├── app.py
 ├── requirements.txt
-├── skills/
-│   ├── README.md
-│   ├── customer_profile/SKILL.md
-│   ├── need_analysis/SKILL.md
-│   ├── opportunity_judgement/SKILL.md
-│   ├── follow_up/SKILL.md
-│   ├── communication/SKILL.md
-│   └── daily_report/SKILL.md
+├── skills/                        # 可评审的业务 Skills 定义
+├── src/
+│   ├── agent.py                   # 模型 Provider 与报告容错层
+│   ├── workflow.py                # W3 七步链式 Skills 调度与执行轨迹
+│   ├── skills.py                  # W2 本地 Skills pipeline / Mock 回退
+│   ├── kpi_agent.py               # W3 确定性 KPI 与会话行动层
+│   ├── prompt.py
+│   ├── schema.py
+│   └── mock_customers.py
+├── tests/
+│   ├── test_workflow.py           # W3 Skills 调度与容错测试
+│   └── test_kpi_agent.py          # W3 KPI 回归测试
 ├── docs/
 │   ├── 01_project_specs.md
 │   ├── 02_skills_workflow.md
 │   ├── 03_prototype_usage.md
 │   ├── 04_demo_case.md
 │   ├── 05_evaluation.md
-│   └── 06_roadmap.md
-├── examples/
-│   ├── case_01_training_customer.md
-│   ├── case_02_course_consultant.md
-│   ├── case_03_enterprise_service.md
-│   └── evaluation_result.md
-├── src/
-│   ├── agent.py
-│   ├── skills.py
-│   ├── prompt.py
-│   ├── schema.py
-│   ├── mock_customers.py
-│   └── __init__.py
-└── prototype/
-    ├── README.md
-    └── zhike_prototype.html
+│   ├── 06_roadmap.md
+│   ├── 07_w3_agent_design.md
+│   ├── 08_kpi_framework.md
+│   ├── 09_w3_demo_script.md
+│   └── 10_w3_evaluation.md
+└── prototype/                     # W2 交互参考页面
 ```
 
-其中 `skills/` 保存可评审的 Skill 定义，`src/skills.py` 在 Mock 模式下按顺序执行这些 Skill 的输入输出边界；HTML 文件是交互参考，W2 主运行入口仍是 `app.py`。
+## 验证方式
 
-### 7. 评测方式
+```bash
+python tests/test_kpi_agent.py
+python tests/test_workflow.py
+```
 
-采用 100 分制，详细评分规则与合格标准见 [`docs/05_evaluation.md`](docs/05_evaluation.md)。
-
-| 评测指标 | 评测重点 |
-|---|---|
-| 信息提取完整度 | 关键事实是否完整、准确 |
-| 客户档案结构化程度 | 字段是否统一、清晰、可核查 |
-| 需求分析准确性 | 需求、痛点和阻碍是否符合证据 |
-| 业务机会判断合理性 | 等级、依据和风险是否一致 |
-| 跟进建议可执行性 | 是否包含明确动作、对象、时点和目标 |
-| 沟通话术可用性 | 是否自然、针对且无虚假承诺 |
-| 业务日报完整度 | 是否完成跨客户汇总、排序和风险提醒 |
-| 用户操作简易度 | 是否能以低学习成本完成核心流程 |
-
-示例评测结果应在 Demo 完成后依据实际运行结果填写，不将目标分数预先表述为已达成结果。
-
-### 8. W2 / W3 / W4 路线图
-
-| 阶段 | 目标 |
-|---|---|
-| W2 | 跑通网页 Demo，验证从客户输入到业务日报的核心闭环及评测标准 |
-| W3 | 加入真实多客户管理、历史跟进记录和 Agent 记忆 |
-| W4 | 在权限与合规条件下接入微信、CRM、日历和名片 OCR，形成可部署业务应用 |
-
-### 9. 当前状态说明
-
-本项目当前处于 W2 复赛原型阶段，重点是验证核心业务闭环与评测标准，不宣称已经具备完整 CRM、企业级系统或真实外部系统集成能力。README 中列出的目标结构与 Demo 能力应以仓库实际文件和现场可运行结果为最终验收依据。
+该测试验证：重复生成同一客户不会重复计数；只有业务员确认的反馈才会更新 KPI；KPI 层不依赖真实模型调用。
 
 ## 文档
 
 - [项目提案 / Project Specs](docs/01_project_specs.md)
 - [核心 Skills / Workflow](docs/02_skills_workflow.md)
-- [Prototype 使用说明](docs/03_prototype_usage.md)
-- [Demo 案例 / Demo Case](docs/04_demo_case.md)
-- [评测标准 / Evaluation Criteria](docs/05_evaluation.md)
-- [开发路线图 / Roadmap](docs/06_roadmap.md)
+- [W3 Agent 设计](docs/07_w3_agent_design.md)
+- [KPI 框架](docs/08_kpi_framework.md)
+- [W3 Demo 演示脚本](docs/09_w3_demo_script.md)
+- [W3 评测标准](docs/10_w3_evaluation.md)
+- [W3 测试证据](docs/11_w3_test_evidence.md)
 - [English README](README_EN.md)
 
 ## 赛事信息
 
-- **赛事阶段：** S3 全球青年培育赛 · W2 复赛
-- **参赛赛道：** track-103 — X创新赛道 / 团队自定义
-- **阶段任务：** 提交 Specs 中的关键 Skills / Workflow，并跑通产品原型 Prototype
-- **项目定位：** 面向业务员的 AI 业务处理智能体
-- **核心闭环：** 客户信息输入 → 客户档案 → 需求分析 → 机会判断 → 跟进建议 → 沟通话术 → 业务日报
-- **W2 主入口：** Streamlit 网页 Demo（`app.py`）
-- **W2 运行模式：** 默认支持 MiniMax-M2.7 API；未配置模型密钥时自动使用 Mock Skills Workflow
-- **提交目录：** `zhike-ai/`
+- **当前赛段：** S3 全球青年培育赛 · W3 半决赛
+- **参赛赛道：** X创新赛道
+- **W3 阶段任务：** 提交整合 Skills、可交付且可演示的智能体（Agent），展示交互方式与用户价值。
+- **W2 冻结基线：** Git tag `w2-final`，保留 W2 复赛完成时的原型版本。

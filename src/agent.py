@@ -14,6 +14,7 @@ from .mock_customers import get_mock_customers
 from .prompt import SYSTEM_PROMPT, build_user_prompt
 from .schema import REPORT_FIELDS, REPORT_JSON_SCHEMA, BusinessReport, validate_report
 from .skills import run_mock_skills_pipeline
+from .workflow import AgentRunResult, run_chained_workflow, run_local_workflow
 
 load_dotenv()
 
@@ -150,10 +151,16 @@ def _setting_any(names: tuple[str, ...], default: str = "") -> str:
 class BusinessAgentProvider(ABC):
     """Provider interface reserved for API and future HermesAgent adapters."""
 
-    @abstractmethod
     def generate(
         self, customer_input: str, mock_customers: list[dict[str, Any]]
     ) -> BusinessReport:
+        """Keep the W2 public API while W3 exposes execution traces separately."""
+        return self.generate_with_trace(customer_input, mock_customers)["report"]
+
+    @abstractmethod
+    def generate_with_trace(
+        self, customer_input: str, mock_customers: list[dict[str, Any]]
+    ) -> AgentRunResult:
         raise NotImplementedError
 
 
@@ -166,23 +173,25 @@ class OpenAIProvider(BusinessAgentProvider):
         self.client = OpenAI()
         self.model = _setting("OPENAI_MODEL", "gpt-5.4-mini")
 
-    def generate(
-        self, customer_input: str, mock_customers: list[dict[str, Any]]
-    ) -> BusinessReport:
-        response = self.client.responses.create(
+    def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
+        response = self.client.chat.completions.create(
             model=self.model,
-            instructions=SYSTEM_PROMPT,
-            input=build_user_prompt(customer_input, mock_customers),
-            text={
-                "format": {
-                    "type": "json_schema",
-                    "name": "zhike_business_report",
-                    "strict": True,
-                    "schema": REPORT_JSON_SCHEMA,
-                }
-            },
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.2,
+            max_completion_tokens=2048,
+            response_format={"type": "json_object"},
         )
-        return validate_report(json.loads(response.output_text))
+        return _parse_json_response(response.choices[0].message.content or "")
+
+    def generate_with_trace(
+        self, customer_input: str, mock_customers: list[dict[str, Any]]
+    ) -> AgentRunResult:
+        return run_chained_workflow(
+            self._call_json, customer_input, mock_customers, runtime_label="OpenAI API"
+        )
 
 
 class MiniMaxProvider(BusinessAgentProvider):
@@ -211,26 +220,26 @@ class MiniMaxProvider(BusinessAgentProvider):
         )
         self.model = model
 
-    def generate(
-        self, customer_input: str, mock_customers: list[dict[str, Any]]
-    ) -> BusinessReport:
+    def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": build_user_prompt(customer_input, mock_customers),
-                },
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
             temperature=0.2,
-            max_completion_tokens=6144,
+            max_completion_tokens=2048,
             response_format={"type": "json_object"},
         )
         content = response.choices[0].message.content or ""
-        payload = _normalize_report_payload(_parse_json_response(content))
-        payload = _complete_missing_fields(payload, customer_input, mock_customers)
-        return validate_report(payload)
+        return _parse_json_response(content)
+
+    def generate_with_trace(
+        self, customer_input: str, mock_customers: list[dict[str, Any]]
+    ) -> AgentRunResult:
+        return run_chained_workflow(
+            self._call_json, customer_input, mock_customers, runtime_label="MiniMax API"
+        )
 
 
 class NvidiaNimProvider(BusinessAgentProvider):
@@ -253,38 +262,33 @@ class NvidiaNimProvider(BusinessAgentProvider):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model = model
 
-    def generate(
-        self, customer_input: str, mock_customers: list[dict[str, Any]]
-    ) -> BusinessReport:
+    def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": build_user_prompt(customer_input, mock_customers),
-                },
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
             ],
             temperature=0.2,
             response_format={"type": "json_object"},
         )
-        content = response.choices[0].message.content or ""
-        try:
-            payload = json.loads(content)
-        except json.JSONDecodeError as exc:
-            raise RuntimeError(
-                "NVIDIA NIM 返回内容不是有效 JSON，请检查模型是否支持 JSON 输出。"
-            ) from exc
-        return validate_report(payload)
+        return _parse_json_response(response.choices[0].message.content or "")
+
+    def generate_with_trace(
+        self, customer_input: str, mock_customers: list[dict[str, Any]]
+    ) -> AgentRunResult:
+        return run_chained_workflow(
+            self._call_json, customer_input, mock_customers, runtime_label="NVIDIA NIM API"
+        )
 
 
 class MockProvider(BusinessAgentProvider):
     """Local provider that executes the submitted Skills workflow without a key."""
 
-    def generate(
+    def generate_with_trace(
         self, customer_input: str, mock_customers: list[dict[str, Any]]
-    ) -> BusinessReport:
-        return validate_report(run_mock_skills_pipeline(customer_input, mock_customers))
+    ) -> AgentRunResult:
+        return run_local_workflow(customer_input, mock_customers)
 
 
 def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, str]:
@@ -315,6 +319,17 @@ def business_agent(
         raise ValueError("请输入至少 8 个字符的客户信息或沟通记录。")
     provider, _ = _select_provider(force_mock=force_mock)
     return provider.generate(normalized, get_mock_customers())
+
+
+def business_agent_with_trace(
+    customer_input: str, *, force_mock: bool = False
+) -> AgentRunResult:
+    """Run the W3 Agent and return both business report and actual Skills trace."""
+    normalized = customer_input.strip()
+    if len(normalized) < 8:
+        raise ValueError("请输入至少 8 个字符的客户信息或沟通记录。")
+    provider, _ = _select_provider(force_mock=force_mock)
+    return provider.generate_with_trace(normalized, get_mock_customers())
 
 
 def runtime_mode(force_mock: bool = False) -> str:
