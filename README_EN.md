@@ -42,17 +42,17 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-W3 uses the SynScale reward runtime as its default provider for report generation. When both SynScale and MiniMax are configured, SynScale takes precedence and MiniMax remains an optional fallback provider. Without a model key, or with **Force Mock Mode** enabled, the app runs the local Mock Skills Workflow for stable demonstrations and regression tests.
+W3 uses MiniMax as its default provider for report generation. When both MiniMax and SynScale are configured, MiniMax takes precedence and SynScale remains an optional fallback provider. Without a model key, or with **Force Mock Mode** enabled, the app runs the local Mock Skills Workflow for stable demonstrations and regression tests.
 
 Local API configuration example. Never commit a real key to the repository:
 
 ```text
-SYNSCALE_API_KEY=sk-syn-your_key
-SYNSCALE_BASE_URL=http://synscale.onesyn.ai/v1
-SYNSCALE_MODEL=deepseek-v4-pro
+MINIMAX_API_KEY=your_minimax_key
+MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+MINIMAX_MODEL=MiniMax-M2.7
 ```
 
-For Streamlit Community Cloud, add the same fields in **App Settings → Secrets**. Optional MiniMax fallback fields are listed in `.env.example`; never commit a real key.
+For Streamlit Community Cloud, add the same fields in **App Settings → Secrets**. Optional SynScale fallback fields are listed in `.env.example`; never commit a real key.
 
 ## Project Structure
 
@@ -84,7 +84,8 @@ zhike-ai/
 │   ├── 07_w3_agent_design.md
 │   ├── 08_kpi_framework.md
 │   ├── 09_w3_demo_script.md
-│   └── 10_w3_evaluation.md
+│   ├── 10_w3_evaluation.md
+│   └── 11_w3_test_evidence.md
 └── prototype/                     # W2 reference interaction page
 ```
 
