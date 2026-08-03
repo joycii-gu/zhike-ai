@@ -1,4 +1,4 @@
-"""Unified report schema for the W2 prototype."""
+"""Unified business report schema shared by the W2 prototype and W3 Agent."""
 
 from __future__ import annotations
 
