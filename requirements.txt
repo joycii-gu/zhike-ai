@@ -1,3 +1,7 @@
-streamlit>=1.40,<2
+streamlit==1.59.0
+# Streamlit 1.61.0 currently installs Starlette 1.4.x on Streamlit Cloud,
+# whose GZipResponder signature is incompatible with Streamlit's middleware.
+# Pin the locally verified compatible pair for reproducible cloud deployment.
+starlette==0.52.1
 python-dotenv>=1.0,<2
 openai>=1.60,<3
