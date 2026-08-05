@@ -58,6 +58,44 @@
 
 完成 M-01 至 M-04 后，可在本文件的“结果记录”栏补充日期、运行模式、简短结论和截图/录屏链接。不要记录 API Key、客户隐私或真实业务敏感信息。
 
-## 7. 结论
+## 7. 发布版本与可复核证据（2026-08-05）
+
+- **代码基线**：GitHub `main` 分支 commit [`69036dd`](https://github.com/joycii-gu/zhike-ai/commit/69036dd)。该版本包含 7 个公开 Skills 与运行时绑定修复，以及 Streamlit Cloud 兼容依赖锁定。
+- **演示地址**：<https://zhike-ai-demo.streamlit.app/>
+- **模型与运行方式**：MiniMax-M2.7；关闭“强制使用 Mock 演示模式”，以页面执行轨迹中的 `MiniMax API` 和 `API 完成` 为准。
+- **隐私边界**：以下截图仅包含演示案例和脱敏界面信息，不包含 API Key、真实客户数据或用户隐私数据。
+
+### 7.1 三个内置案例的 API 运行证据
+
+| 编号 | 案例 | 实际结果 | 可复核证据 |
+|---|---|---|---|
+| A-01 | 案例 1：企业培训客户（李总） | 7 个 Skills 均为 MiniMax API 完成，无安全回退 | [执行轨迹与客户档案截图](evidence/w3_api_case_01_training.png) |
+| A-02 | 案例 2：课程顾问客户（周校长） | 7 个 Skills 均为 MiniMax API 完成，无安全回退 | [执行轨迹与客户档案截图](evidence/w3_api_case_02_course_consultant.png) |
+| A-03 | 案例 3：企业服务客户（赵总） | 7 个 Skills 均为 MiniMax API 完成，无安全回退 | [执行轨迹与客户档案截图](evidence/w3_api_case_03_enterprise_service.png) |
+
+三张截图均显示 7 个 Skills 的 `API 完成` 状态及 `MiniMax API` 运行时标签。证据结论只覆盖三个内置案例与上述代码版本，不外推为所有客户文本、所有模型输出质量或外部系统集成的保证。
+
+### 7.2 KPI 交互证据与边界
+
+- [KPI 与行动页面截图](evidence/w3_kpi_feedback_interface.png) 展示三个 API 案例进入同一会话后的优先行动队列，以及“记录一次跟进反馈”的人工确认入口。
+- 截图拍摄时尚未提交反馈，因此其证明的是 KPI 页面、行动队列和人工确认交互入口可用；**不将其表述为 KPI 数字已经增长的证据**。
+- KPI 仅统计业务员在本页确认的反馈，AI 生成的分析和建议不会自动计入业务业绩。
+
+### 7.3 当前版本自动化回归记录
+
+在本次发布版本同步前，已执行并通过：
+
+```text
+python tests/test_workflow.py
+python tests/test_kpi_agent.py
+```
+
+其中 Workflow 回归覆盖 7 个公开 Skills 的注册、文件可读取性、运行时 Prompt 注入、链式调度、单步重试与安全回退；KPI 回归覆盖人工确认后计数、重复输入不重复计数及反馈记录可追溯性。
+
+### 7.4 待补充的最后一项强证据
+
+建议再保留一张截图：选择客户和“已完成一次有效沟通”后提交反馈，随后“有效沟通”从 0 变为 1。该截图将作为人工确认 → KPI 更新闭环的直接证据。
+
+## 8. 结论
 
 当前 W3 版本已具备可运行的 Skills 编排、KPI 规则层、页面交互、本地容错证据，以及三个内置案例的 MiniMax API 全链路验收记录。MiniMax 为当前默认 Provider；后续可通过人工质量复核和一次非开发者走查继续增强评审证据。
