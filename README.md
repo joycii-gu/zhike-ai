@@ -85,7 +85,13 @@ zhike-ai/
 │   ├── 08_kpi_framework.md
 │   ├── 09_w3_demo_script.md
 │   ├── 10_w3_evaluation.md
-│   └── 11_w3_test_evidence.md
+│   ├── 11_w3_test_evidence.md
+│   └── evidence/                    # W3 可复核运行证据
+│       ├── w3_api_case_01_training.png
+│       ├── w3_api_case_02_course_consultant.png
+│       ├── w3_api_case_03_enterprise_service.png
+│       ├── w3_kpi_feedback_interface.png
+│       └── w3_kpi_feedback_confirmed.png
 └── prototype/                     # W2 交互参考页面
 ```
 
