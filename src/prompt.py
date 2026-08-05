@@ -61,16 +61,32 @@ def _compact_json(value: Any, limit: int = 5200) -> str:
     return text if len(text) <= limit else text[:limit] + "…（已剪裁）"
 
 
+def _compact_skill_definition(definition: str, limit: int = 6000) -> str:
+    """Keep the public Skill contract available to the runtime without unbounded prompts."""
+    normalized = definition.strip()
+    return normalized if len(normalized) <= limit else normalized[:limit] + "\n\n[Skill definition truncated]"
+
+
 def build_skill_prompt(
     skill_id: str,
     *,
     customer_input: str,
     context: dict[str, Any],
     mock_customers: list[dict[str, Any]],
+    skill_definition: str,
 ) -> str:
     """Build a compact, step-specific prompt for the real chained workflow."""
     raw = customer_input.strip()
+    public_skill_contract = _compact_skill_definition(skill_definition)
     if skill_id == "customer_info_parse":
+        raw = (
+            f"{raw}\n\n"
+            "The following is the public Skill Definition loaded by the current runtime. "
+            "It defines the input, output and fact boundary for this step:\n"
+            "<public_skill_definition>\n"
+            f"{public_skill_contract}\n"
+            "</public_skill_definition>"
+        )
         return f"""执行 Skill 1：客户信息解析。
 
 原始客户记录：
@@ -96,6 +112,11 @@ def build_skill_prompt(
     if skill_id == "daily_report":
         mock_block = f"\n\nW2 演示 Mock 客户（仅可用于日报）：\n{_compact_json(mock_customers, 2800)}"
     return f"""{instructions[skill_id]}
+
+以下是该步骤在仓库中公开提交、且由当前 Runtime 实际加载的 Skill Definition。它定义本步骤的输入、输出、事实边界与合格标准；如与通用说明冲突，以此定义为准：
+<public_skill_definition>
+{public_skill_contract}
+</public_skill_definition>
 
 以下是上游 Skill 已确认的必要上下文（不是新的原始事实）：
 {focused_context}{mock_block}

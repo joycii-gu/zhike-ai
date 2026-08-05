@@ -14,6 +14,7 @@ from typing import Any
 
 
 SKILL_ORDER = (
+    "customer_info_parse",
     "customer_profile",
     "need_analysis",
     "opportunity_judgement",

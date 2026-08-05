@@ -13,7 +13,7 @@ from typing import Any, TypedDict
 
 from .prompt import SKILL_SYSTEM_PROMPT, build_skill_prompt
 from .schema import BusinessReport, validate_report
-from .skills import parse_customer_info, run_mock_skills_pipeline
+from .skills import load_skill_definition, parse_customer_info, run_mock_skills_pipeline
 
 
 class SkillTraceEntry(TypedDict):
@@ -182,6 +182,7 @@ def run_chained_workflow(
                 customer_input=customer_input,
                 context=context,
                 mock_customers=mock_customers,
+                skill_definition=load_skill_definition(skill_id),
             )
 
             # Model output can occasionally be truncated or fail JSON parsing.

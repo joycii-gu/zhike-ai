@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from src.agent import SynScaleProvider, _select_provider
 from src.mock_customers import get_mock_customers
+from src.skills import SKILL_ORDER, load_skill_definition, skill_files
 from src.workflow import run_chained_workflow, run_local_workflow
 
 
@@ -22,6 +23,36 @@ def test_chained_workflow_calls_all_seven_skills() -> None:
     assert len(result["trace"]) == 7
     assert all(item["status"] == "api" for item in result["trace"])
     assert all(result["report"].values())
+
+
+def test_all_public_skills_are_registered_and_loaded_by_runtime() -> None:
+    """Public Skill folders must match the seven-step runtime workflow."""
+    expected = (
+        "customer_info_parse",
+        "customer_profile",
+        "need_analysis",
+        "opportunity_judgement",
+        "follow_up",
+        "communication",
+        "daily_report",
+    )
+    assert SKILL_ORDER == expected
+    assert tuple(skill_files()) == expected
+    assert all(load_skill_definition(name).strip() for name in expected)
+
+    observed_prompts: list[str] = []
+
+    def checking_call(system: str, user: str) -> dict:
+        observed_prompts.append(user)
+        return fake_model_call(system, user)
+
+    result = run_chained_workflow(
+        checking_call,
+        "李总想了解 AI 如何帮助销售团队做客户跟进，并希望下周沟通。",
+        get_mock_customers(),
+    )
+    assert len(result["trace"]) == 7
+    assert all("<public_skill_definition>" in prompt for prompt in observed_prompts)
 
 
 def test_step_failure_falls_back_without_breaking_report() -> None:

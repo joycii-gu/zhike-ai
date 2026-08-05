@@ -512,9 +512,17 @@ if generate:
             st.session_state.report = run_result["report"]
             st.session_state.agent_trace = run_result["trace"]
             api_steps = sum(1 for item in run_result["trace"] if item["status"] == "api")
+            local_steps = sum(1 for item in run_result["trace"] if item["status"] == "local")
             fallback_steps = sum(1 for item in run_result["trace"] if item["status"] == "fallback")
+            execution_summary = " · ".join(
+                (
+                    f"API Skills {api_steps}",
+                    f"本地 Mock Skills {local_steps}",
+                    f"安全回退 {fallback_steps}",
+                )
+            )
             status.update(
-                label=f"业务报告已完成 / Report ready · API Skills {api_steps} · 安全回退 {fallback_steps}",
+                label=f"业务报告已完成 / Report ready · {execution_summary}",
                 state="complete",
                 expanded=False,
             )
