@@ -1,580 +1,407 @@
-"""Streamlit entry point for the ZhiKe AI W2 prototype."""
+"""ZhiKe AI W4 business workspace.
+
+This Streamlit application keeps the existing seven-Skill Agent runtime and
+adds the minimum product layer required for continuous use: account isolation,
+durable customer records, tasks, human feedback and auditable KPI events.
+"""
 
 from __future__ import annotations
 
-import os
 import json
-import ast
 import re
+from typing import Any
 
 import streamlit as st
 
-from src.agent import (
-    business_agent_with_trace,
-    has_api_provider,
-    runtime_mode,
-)
-from src.kpi_agent import (
-    EVENT_LABELS,
-    build_kpi_dashboard,
-    default_session_state,
-    ingest_customer,
-    normalize_goal,
-    record_feedback,
+from src.agent import business_agent_with_trace, has_api_provider, runtime_mode
+from src.kpi_agent import EVENT_LABELS
+from src.storage import (
+    authenticate_user,
+    create_customer,
+    create_task,
+    create_user,
+    dashboard_snapshot,
+    get_customer,
+    initialize_database,
+    list_customers,
+    list_tasks,
+    record_feedback_event,
+    revert_feedback_event,
+    save_report,
+    update_task_status,
 )
 
 
 EXAMPLES = {
-    "案例 1 · 企业培训客户": "李总，做企业培训，最近想了解 AI 员工如何帮助销售团队做客户跟进。之前看过我们的 HermesAgent 安装服务，对 AI 业务助理感兴趣，但还没有明确预算，希望下周约一次线上沟通。他比较关心部署难度、价格、实际效果，以及业务员是否真的会用。",
-    "案例 2 · 课程顾问客户": "周校长经营一家职业技能培训机构，想了解 AI 能否帮助课程顾问整理学员微信咨询、判断报名意向并生成后续沟通话术。机构目前有 6 名课程顾问，新人较多，担心 AI 话术太生硬，也担心顾问不会使用。预算暂时没有确定，希望本周五先看一次线上演示，再决定是否安排小范围试用。",
-    "案例 3 · 企业服务客户": "赵总负责一家为小微企业提供工商、财税和政策咨询服务的公司。团队有 4 名业务员，客户需求经常散落在电话纪要和个人备注里。赵总希望 AI 帮助整理企业客户需求、提炼方案沟通重点并生成跟进计划。目前处于内部了解阶段，关注数据保密、输出准确性和员工使用成本。",
+    "企业培训客户": "李总，做企业培训，最近想了解 AI 员工如何帮助销售团队做客户跟进。之前看过我们的 HermesAgent 安装服务，对 AI 业务助理感兴趣，但还没有明确预算，希望下周约一次线上沟通。他比较关心部署难度、价格、实际效果，以及业务员是否真的会用。",
+    "课程顾问客户": "周校长经营一家职业技能培训机构，想了解 AI 能否帮助课程顾问整理学员微信咨询、判断报名意向并生成后续沟通话术。机构目前有 6 名课程顾问，新人较多，担心 AI 话术太生硬，也担心顾问不会使用。预算暂时没有确定，希望本周五先看一次线上演示，再决定是否安排小范围试用。",
+    "企业服务客户": "赵总负责一家为小微企业提供工商、财税和政策咨询服务的公司。团队有 4 名业务员，客户需求经常散落在电话纪要和个人备注里。赵总希望 AI 帮助整理企业客户需求、提炼方案沟通重点并生成跟进计划。目前处于内部了解阶段，关注数据保密、输出准确性和员工使用成本。",
+}
+
+NAVIGATION = {
+    "工作台": "◫",
+    "客户管理": "◎",
+    "跟进任务": "✓",
+    "新建分析": "＋",
 }
 
 
-st.set_page_config(
-    page_title="知客 ZhiKe AI",
-    page_icon="💧",
-    layout="wide",
-    initial_sidebar_state="collapsed",
-)
+st.set_page_config(page_title="知客 ZhiKe AI", page_icon="◆", layout="wide", initial_sidebar_state="expanded")
 
 st.markdown(
     """
 <style>
-    .stApp {background: linear-gradient(180deg, #f7fbff 0%, #ffffff 38%);}
-    .block-container {max-width: 1180px; padding-top: 2.4rem; padding-bottom: 4rem;}
-    .hero {position:relative; overflow:hidden; padding:1.65rem 2rem; border-radius:24px; background:linear-gradient(120deg,#0d2d4b 0%,#164d72 52%,#167b94 100%); color:#fff; box-shadow:0 18px 42px rgba(18,54,90,.18); margin-bottom:1.25rem;}
-    .hero::before {content:""; position:absolute; inset:0; opacity:.15; background-image:radial-gradient(rgba(255,255,255,.8) 1px,transparent 1px); background-size:18px 18px; mask-image:linear-gradient(90deg,transparent 0%,black 50%,transparent 100%);}
-    .hero-grid {position:relative; display:grid; grid-template-columns:minmax(0,1.55fr) minmax(250px,.8fr); gap:2rem; align-items:center;}
-    .hero-eyebrow {display:inline-flex; align-items:center; gap:.38rem; padding:.3rem .62rem; border:1px solid rgba(203,237,246,.42); background:rgba(255,255,255,.10); border-radius:999px; color:#d9f6fb; font-size:.73rem; letter-spacing:.08em; font-weight:700;}
-    .hero h1 {font-size:2.28rem; letter-spacing:-.035em; margin:.7rem 0 .32rem; color:#fff;}
-    .hero-kicker {font-size:1.13rem; font-weight:650; opacity:.96; margin:0 0 .45rem;}
-    .hero-desc {max-width:680px; font-size:.92rem; line-height:1.65; color:rgba(237,249,252,.83); margin:0;}
-    .hero-flow {display:flex; flex-wrap:wrap; gap:.42rem; align-items:center; margin-top:1rem;}
-    .hero-node {padding:.34rem .55rem; border:1px solid rgba(220,245,250,.26); border-radius:8px; font-size:.76rem; font-weight:600; color:#e7fbff; background:rgba(7,26,46,.18);}
-    .hero-arrow {color:#aeeaf2; opacity:.8; font-size:.78rem;}
-    .agent-panel {padding:1rem; border:1px solid rgba(216,245,250,.26); border-radius:16px; background:linear-gradient(145deg,rgba(255,255,255,.16),rgba(255,255,255,.06)); box-shadow:inset 0 1px 0 rgba(255,255,255,.12); backdrop-filter:blur(8px);}
-    .agent-panel-top {display:flex; align-items:center; gap:.42rem; font-size:.73rem; color:#c7f3f7; letter-spacing:.06em; font-weight:700; margin-bottom:.8rem;}
-    .live-dot {width:7px; height:7px; border-radius:50%; background:#75e6b6; box-shadow:0 0 0 4px rgba(117,230,182,.14);}
-    .agent-status {display:grid; gap:.52rem;}
-    .agent-status-item {display:flex; justify-content:space-between; gap:.7rem; align-items:center; padding:.52rem .6rem; border-radius:10px; background:rgba(5,25,43,.22); font-size:.79rem; color:#dff8fb;}
-    .agent-status-item strong {font-size:.78rem; color:#fff; white-space:nowrap;}
-    .agent-panel-foot {margin:.72rem 0 0; font-size:.72rem; line-height:1.45; color:rgba(224,248,251,.72);}
-    @media (max-width: 760px) {.hero{padding:1.4rem 1.2rem}.hero-grid{grid-template-columns:1fr;gap:1.15rem}.hero h1{font-size:2rem}.agent-panel{padding:.85rem}.hero-desc{font-size:.87rem}.goal-console{padding:.9rem;flex-direction:column;gap:.55rem}}
-    .scope {padding: .8rem 1rem; border-left: 4px solid #3b82a0; background: #eef7fb; border-radius: 8px; margin: .5rem 0 1rem; color: #27465a;}
-    .goal-console {display:flex; justify-content:space-between; align-items:flex-start; gap:1rem; padding:1rem 1.15rem .82rem; margin:.2rem 0 0; border:1px solid #d7e9f1; border-top:4px solid #2d89a7; border-radius:16px 16px 0 0; background:linear-gradient(105deg,#f5fbfe 0%,#fbfdfe 68%);}
-    .goal-console h3 {font-size:1rem; color:#163c56; margin:0 0 .23rem;}
-    .goal-console p {font-size:.82rem; color:#5d7483; margin:0;}
-    .goal-badge {flex:0 0 auto; padding:.3rem .6rem; border:1px solid #cce4ee; border-radius:999px; background:#fff; color:#2b718b; font-size:.75rem; font-weight:650;}
-    div[data-testid="stForm"] {margin-top:0; padding:.8rem 1.15rem 1rem; border:1px solid #d7e9f1; border-top:0; border-radius:0 0 16px 16px; background:#fff;}
-    .status-row {display:flex; gap:.65rem; flex-wrap:wrap; margin:-.6rem 0 1.4rem;}
-    .status-pill {padding:.35rem .75rem; border-radius:999px; font-size:.82rem; font-weight:650; border:1px solid #d9e6ee; background:#fff; color:#365267;}
-    .status-pill.online {background:#ecfdf5; border-color:#a7f3d0; color:#047857;}
-    .status-pill.prototype {background:#eff6ff; border-color:#bfdbfe; color:#1d4ed8;}
-    .step-strip {display:flex; gap:.45rem; align-items:center; flex-wrap:wrap; margin:0 0 1.25rem;}
-    .step {padding:.42rem .7rem; border-radius:10px; background:#f3f6f8; color:#6b7d89; font-size:.8rem; border:1px solid #e4ebef;}
-    .step-arrow {color:#9aabb5; font-size:.85rem;}
-    .result-head {display:flex; justify-content:space-between; align-items:center; padding:.85rem 1rem; margin:.8rem 0 1rem; border-radius:12px; background:#f4f9fc; border:1px solid #dcecf3; color:#23465d;}
-    .result-head strong {font-size:1.05rem;}
-    .trace-title {display:flex; justify-content:space-between; align-items:center; gap:1rem; margin:1rem 0 .55rem;}
-    .trace-title h4 {margin:0; color:#23465d; font-size:.96rem;}
-    .trace-title span {font-size:.75rem; color:#6b7d89;}
-    .trace-grid {display:grid; grid-template-columns:repeat(7,minmax(96px,1fr)); gap:.45rem; margin-bottom:1rem; overflow-x:auto;}
-    .trace-item {min-width:96px; padding:.62rem .58rem; border:1px solid #dbe8ee; border-radius:10px; background:#fff;}
-    .trace-step {font-size:.67rem; color:#718492; margin-bottom:.27rem;}
-    .trace-name {font-size:.75rem; line-height:1.35; color:#284354; font-weight:650;}
-    .trace-state {margin-top:.38rem; font-size:.68rem; font-weight:700;}
-    .trace-runtime {margin-top:.24rem; font-size:.61rem; line-height:1.25; color:#718492; overflow-wrap:anywhere;}
-    .trace-api {color:#047857;}.trace-local {color:#365267;}.trace-fallback {color:#b45309;}
-    .footer-note {padding:.9rem 1rem; border-radius:12px; background:#f8fafc; border:1px solid #e5e7eb; color:#64748b; font-size:.82rem;}
-    div[data-testid="stTabs"] button {font-weight: 650;}
-    div[data-testid="stTabs"] button[aria-selected="true"] {color:#0f6d8f; border-bottom-color:#0f8ca8;}
-    div[data-testid="stMarkdownContainer"] table {width: 100%;}
+:root { --brand:#2B5FE0; --brand-dark:#173B91; --ink:#182230; --muted:#667085; --line:#EAECF0; --surface:#ffffff; --canvas:#F8FAFC; }
+.stApp { background:var(--canvas); color:var(--ink); font-family:'Microsoft YaHei','Noto Sans CJK SC','PingFang SC',Arial,sans-serif; }
+.block-container { max-width:1380px; padding:2rem 2.25rem 4rem; }
+[data-testid='stSidebar'] { background:#0B1F3A; }
+[data-testid='stSidebar'] * { color:#E8EEF8 !important; }
+[data-testid='stSidebar'] .stRadio > div { gap:.35rem; }
+[data-testid='stSidebar'] label { padding:.55rem .7rem; border-radius:9px; }
+[data-testid='stSidebar'] label:has(input:checked) { background:#244EAE; }
+h1,h2,h3 { letter-spacing:-.025em; }
+h1 { font-size:30px !important; font-weight:700 !important; margin-bottom:.1rem !important; }
+h2 { font-size:21px !important; font-weight:700 !important; }
+.muted { color:var(--muted); font-size:13px; }
+.workspace-head { display:flex; align-items:flex-start; justify-content:space-between; margin:0 0 1.75rem; }
+.logo { font:700 21px/1 'Microsoft YaHei','Noto Sans CJK SC',Arial,sans-serif; letter-spacing:-.04em; margin:1rem .25rem 1.5rem; color:white; }
+.logo span { color:#6EA0FF; }
+.side-note { margin-top:3rem; border-top:1px solid rgba(255,255,255,.14); padding-top:1rem; font-size:12px; line-height:1.7; color:#B9C7DD; }
+.metric-card,.panel { background:var(--surface); border:1px solid var(--line); border-radius:12px; box-shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04); }
+.metric-card { padding:20px 22px; min-height:150px; }
+.metric-label { color:#475467; font-size:14px; font-weight:600; margin-bottom:10px; }
+.metric-value { font-family:'Arial','Microsoft YaHei',sans-serif; font-variant-numeric:tabular-nums; font-size:32px; font-weight:700; color:var(--brand); }
+.metric-target { color:#98A2B3; font-size:16px; margin-left:4px; }
+.progress-track { height:6px; border-radius:999px; background:#EAECF0; margin:16px 0 9px; overflow:hidden; }
+.progress-fill { height:100%; min-width:2px; border-radius:999px; background:var(--brand); }
+.metric-foot { color:#667085; font-size:12px; }
+.panel { padding:20px 22px; margin-top:1rem; }
+.panel-title { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; font-size:17px; font-weight:700; }
+.panel-title small { color:var(--brand); font-weight:600; font-size:12px; }
+.pill { display:inline-block; border-radius:999px; padding:4px 10px; font-size:12px; line-height:1.35; font-weight:600; border:0; }
+.pill-high { background:#FEECEC; color:#D0292E; }.pill-medium { background:#FFF3E5; color:#B54708; }.pill-normal { background:#ECFDF3; color:#027A48; }.pill-pending { background:#EFF6FF; color:#175CD3; }
+.source { display:inline-block; font-size:12px; padding:3px 9px; border-radius:999px; margin-right:5px; background:#F2F4F7; color:#475467; }.source-fact { background:#ECFDF3;color:#027A48; }.source-inference { background:#EFF6FF;color:#175CD3; }.source-pending { background:#FFF6E8;color:#B54708; }.source-human { background:#F4F3FF;color:#5925DC; }
+.table-wrap table { border-collapse:separate; border-spacing:0; overflow:hidden; border:1px solid var(--line); border-radius:10px; width:100%; }
+.table-wrap th { background:#F9FAFB; color:#667085; font-size:12px; letter-spacing:.02em; text-align:left; padding:13px 14px; }.table-wrap td { padding:16px 14px; border-top:1px solid var(--line); font-size:14px; vertical-align:middle; }.table-wrap tr:hover td { background:#F9FAFB; }
+.task-action { color:var(--brand); font-weight:600; font-size:13px; }
+.privacy { border-left:4px solid var(--brand); background:#EFF6FF; color:#344054; border-radius:8px; padding:14px 16px; line-height:1.7; font-size:13px; margin:1rem 0; }
+.report-section { border:1px solid var(--line); border-radius:12px; padding:18px 20px; background:#fff; margin:0 0 14px; }.report-section h3 { font-size:17px!important; margin:0 0 10px; }.report-section p,.report-section li { line-height:1.75; }
+.trace { display:grid; grid-template-columns:repeat(7,minmax(105px,1fr)); gap:9px; overflow-x:auto; margin:1rem 0; }.trace-card { border:1px solid #DCE6F1; border-radius:10px; padding:12px; min-width:105px; }.trace-card b { display:block; font-size:13px; margin:5px 0; }.trace-card small { color:#667085; font-size:11px; }.api { color:#027A48; }.fallback { color:#B54708; }.local { color:#175CD3; }
+.login-wrap { max-width:440px; margin:9vh auto; }.login-card { background:white;border:1px solid var(--line);border-radius:16px;padding:30px;box-shadow:0 8px 30px rgba(16,24,40,.08); }.login-card h1 { margin:0!important; }.login-card p { color:#667085; line-height:1.65; }
+.stButton > button { border-radius:8px; font-weight:600; min-height:42px; }.stButton > button[kind='primary'] { background:var(--brand); border-color:var(--brand); }.stButton > button[kind='primary']:hover { background:var(--brand-dark); border-color:var(--brand-dark); }
+div[data-testid='stDataFrame'] { border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+@media(max-width:900px){ .block-container{padding:1.25rem 1rem 3rem}.trace{grid-template-columns:repeat(3,1fr)} }
 </style>
 """,
     unsafe_allow_html=True,
 )
 
-if "customer_input" not in st.session_state:
-    st.session_state.customer_input = EXAMPLES["案例 1 · 企业培训客户"]
-if "report" not in st.session_state:
-    st.session_state.report = None
-if "w3_state" not in st.session_state:
-    st.session_state.w3_state = default_session_state()
-if "w3_current_customer_id" not in st.session_state:
-    st.session_state.w3_current_customer_id = None
-if "agent_trace" not in st.session_state:
-    st.session_state.agent_trace = []
+
+def infer_metadata(text: str, name: str) -> dict[str, str]:
+    industry = "待确认"
+    for keyword, value in (("企业培训", "企业培训"), ("职业技能", "职业教育"), ("财税", "企业服务"), ("工商", "企业服务"), ("软件", "企业软件")):
+        if keyword in text:
+            industry = value
+            break
+    stage = "需求探索"
+    if any(word in text for word in ("演示", "线上沟通", "下周", "本周五")):
+        stage = "沟通/演示准备"
+    priority = "高" if any(word in text for word in ("演示", "本周", "下周", "试用")) else "中"
+    risk = "预算或决策信息待确认" if "预算" in text else "需确认下一步跟进安排"
+    return {"industry": industry, "stage": stage, "priority": priority, "risk": risk, "name": name or "待确认客户"}
 
 
-def select_example(example_text: str) -> None:
-    """Update the input before Streamlit instantiates widgets on the rerun."""
-    st.session_state.customer_input = example_text
-    st.session_state.report = None
-
-
-def render_report_content(content: str) -> None:
-    """Render structured model output as readable sections instead of raw JSON."""
-    original_content = content
-    try:
-        parsed = json.loads(original_content)
-    except (TypeError, json.JSONDecodeError):
-        parsed = extract_embedded_json(original_content)
-        if parsed is None:
-            content = prettify_inline_records(original_content)
-            fields = parse_inline_fields(content)
-            if fields:
-                rows = []
-                for key, value in fields:
-                    rows.append(f"| {key} | {value.replace('|', '／')} |")
-                st.markdown("| 字段 | 内容 |\n|---|---|\n" + "\n".join(rows))
-            else:
-                st.markdown(content.replace("<br>", "；"))
-            return
-
-    if isinstance(parsed, dict):
-        rows = []
-        for key, value in parsed.items():
-            if isinstance(value, list):
-                display = "<br>".join(f"• {str(item)}" for item in value)
-            elif isinstance(value, dict):
-                display = "<pre>" + json.dumps(value, ensure_ascii=False, indent=2) + "</pre>"
-            else:
-                display = str(value)
-            display = display.replace("|", "\\|")
-            rows.append(f"| {key} | {display} |")
-        st.markdown("| 字段 | 内容 |\n|---|---|\n" + "\n".join(rows), unsafe_allow_html=True)
-    elif isinstance(parsed, list):
-        st.markdown("\n".join(f"- {item}" for item in parsed))
+def pill(value: str) -> str:
+    if "高" in value or "风险" in value:
+        style = "pill-high"
+    elif "中" in value:
+        style = "pill-medium"
+    elif "待" in value or "确认" in value:
+        style = "pill-pending"
     else:
-        st.markdown(str(parsed))
+        style = "pill-normal"
+    return f'<span class="pill {style}">{value}</span>'
 
 
-def parse_inline_fields(content: str) -> list[tuple[str, str]]:
-    """Parse model text such as '客户名称：…；行业：…' into table rows."""
-    labels = (
-        "客户名称", "客户称谓", "行业", "所属行业", "角色", "客户角色",
-        "当前需求", "核心需求", "关注点", "主要关注点", "预算", "当前阶段",
-        "时间计划", "待确认信息", "待确认事项",
-    )
-    label_pattern = "|".join(re.escape(label) for label in labels)
-    matches = list(re.finditer(rf"({label_pattern})\s*[：:]\s*", content))
-    if len(matches) < 2:
-        return []
-    rows: list[tuple[str, str]] = []
-    for index, match in enumerate(matches):
-        start = match.end()
-        end = matches[index + 1].start() if index + 1 < len(matches) else len(content)
-        value = content[start:end].strip(" ；;\\n")
-        if value:
-            rows.append((match.group(1), value))
-    return rows
+def source_badges() -> str:
+    return '<span class="source source-fact">事实</span><span class="source source-inference">AI 推断</span><span class="source source-pending">待确认</span><span class="source source-human">人工确认</span>'
 
 
-def extract_embedded_json(content: str) -> dict | list | None:
-    """Extract a JSON object embedded in a Markdown table or explanatory text."""
-    decoder = json.JSONDecoder()
-    for index, character in enumerate(content):
-        if character != "{":
-            continue
-        try:
-            parsed, _ = decoder.raw_decode(content[index:])
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, (dict, list)):
-            return parsed
-    return None
+def render_report(content: str) -> None:
+    """Display a field clearly even when the provider returns JSON text."""
+    try:
+        data = json.loads(content)
+    except (TypeError, json.JSONDecodeError):
+        data = None
+    if isinstance(data, dict):
+        rows = "".join(f"<tr><th>{key}</th><td>{value if not isinstance(value, list) else '；'.join(map(str,value))}</td></tr>" for key, value in data.items())
+        st.markdown(f'<div class="table-wrap"><table>{rows}</table></div>', unsafe_allow_html=True)
+    elif isinstance(data, list):
+        st.markdown("\n".join(f"- {item}" for item in data))
+    else:
+        safe = re.sub(r"\n{3,}", "\n\n", content).replace("<br>", "\n")
+        st.markdown(safe)
 
 
-def prettify_inline_records(content: str) -> str:
-    """Turn Python-style list/dict records in Markdown into compact readable text."""
-    pattern = re.compile(r"\[(?:\s*\{.*?\}\s*,?)+\]", re.DOTALL)
-
-    def replace_list(match: re.Match[str]) -> str:
-        try:
-            records = ast.literal_eval(match.group(0))
-        except (ValueError, SyntaxError):
-            return match.group(0)
-        if not isinstance(records, list) or not all(isinstance(item, dict) for item in records):
-            return match.group(0)
-        rendered = []
-        for item in records:
-            preferred = [
-                ("客户名称", "客户"), ("行业", "行业"), ("优先级", "优先级"),
-                ("当前阶段", "阶段"), ("待办事项", "待办"), ("风险提醒", "风险"),
-            ]
-            parts = []
-            used = set()
-            for source, label in preferred:
-                if source in item:
-                    value = item[source]
-                    if isinstance(value, list):
-                        value = "、".join(str(v) for v in value)
-                    parts.append(f"{label}：{value}")
-                    used.add(source)
-            for key, value in item.items():
-                if key not in used and value not in (None, "", [], {}):
-                    parts.append(f"{key}：{value}")
-            rendered.append("；".join(parts))
-        return "<br>".join(f"• {line}" for line in rendered)
-
-    content = pattern.sub(replace_list, content)
-
-    # Some model responses emit each customer as a standalone Python dict.
-    dict_pattern = re.compile(r"\{[^{}\n]*\}")
-    key_labels = {
-        "序号": "序号", "name": "客户", "industry": "行业", "stage": "阶段",
-        "priority": "优先级", "opportunity": "机会", "key_concerns": "关注点",
-        "next_action": "下一步", "risk": "风险",
-    }
-
-    def replace_dict(match: re.Match[str]) -> str:
-        try:
-            record = ast.literal_eval(match.group(0))
-        except (ValueError, SyntaxError):
-            return match.group(0)
-        if not isinstance(record, dict):
-            return match.group(0)
-        parts = []
-        for key, value in record.items():
-            label = key_labels.get(str(key), str(key))
-            if isinstance(value, list):
-                value = "、".join(str(item) for item in value)
-            parts.append(f"{label}：{value}")
-        return "<br>".join(parts)
-
-    return dict_pattern.sub(replace_dict, content)
-
-
-def render_execution_trace(trace: list[dict]) -> None:
-    """Render the actual API/local fallback outcomes for every Agent Skill."""
+def render_trace(trace: list[dict[str, Any]]) -> None:
     if not trace:
         return
-    labels = {"api": "● API 完成", "local": "● 本地完成", "fallback": "● 安全回退"}
     cards = []
-    for index, entry in enumerate(trace, 1):
-        status = str(entry.get("status", "local"))
-        safe_status = status if status in labels else "local"
-        name = str(entry.get("name", "Skill"))
-        runtime = str(entry.get("runtime", "Unknown runtime"))
-        cards.append(
-            f'<div class="trace-item"><div class="trace-step">SKILL {index}</div>'
-            f'<div class="trace-name">{name}</div>'
-            f'<div class="trace-state trace-{safe_status}">{labels[safe_status]}</div>'
-            f'<div class="trace-runtime">{runtime}</div></div>'
-        )
-    st.markdown(
-        '<div class="trace-title"><h4>⚙ Skills 执行轨迹 / Agent Execution Trace</h4>'
-        '<span>基于本次实际运行结果，不展示模拟状态</span></div>'
-        f'<div class="trace-grid">{"".join(cards)}</div>',
-        unsafe_allow_html=True,
-    )
+    for index, item in enumerate(trace, 1):
+        status = str(item.get("status", "local"))
+        label = {"api": "● API 完成", "fallback": "● 安全回退", "local": "● 本地规则"}.get(status, "● 已完成")
+        cards.append(f'<div class="trace-card"><small>SKILL {index}</small><b>{item.get("name", "业务 Skill")}</b><span class="{status}">{label}</span><br><small>{item.get("runtime", "")}</small></div>')
+    st.markdown('<div class="trace">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
 
 
-def render_kpi_dashboard() -> None:
-    """Render the W3 in-session KPI view from deterministic state only."""
-    dashboard = build_kpi_dashboard(st.session_state.w3_state)
-    st.caption("KPI 仅统计业务员在本页确认的跟进反馈；AI 分析与建议不会被当作已完成业绩。 / KPI counts only user-confirmed follow-up events.")
-    metric_columns = st.columns(4)
-    for column, metric in zip(metric_columns, dashboard["metrics"]):
-        target_text = "未设置目标" if metric["target"] <= 0 else f"目标 {metric['target']}"
-        progress_text = "—" if metric["progress"] is None else f"{metric['progress']}% · {metric['status']}"
-        column.metric(metric["name"], metric["actual"], f"{target_text} · {progress_text}")
-        if metric["target"] > 0:
-            daily_text = "周期已结束" if metric["daily_required"] is None else f"后续日均需完成 {metric['daily_required']}"
-            column.caption(f"应达 {metric['expected_by_today']} · 缺口 {metric['remaining_gap']} · {daily_text}")
+def init() -> None:
+    initialize_database()
+    st.session_state.setdefault("user", None)
+    st.session_state.setdefault("page", "工作台")
+    st.session_state.setdefault("selected_customer", None)
+    st.session_state.setdefault("analysis_input", EXAMPLES["企业培训客户"])
 
-    st.markdown("#### 今日优先行动 / Priority Actions")
-    if dashboard["actions"]:
-        st.dataframe(dashboard["actions"], width="stretch", hide_index=True)
-    else:
-        st.info("先生成一份客户业务报告，系统会将当前客户加入本次会话的行动队列。 / Generate a report to add a customer to this session.")
 
-    if dashboard["warnings"]:
-        st.markdown("#### 节奏与风险提醒 / Pace & Risk Alerts")
-        for warning in dashboard["warnings"]:
-            st.warning(warning)
+def login_screen() -> None:
+    st.markdown('<div class="login-wrap"><div class="login-card">', unsafe_allow_html=True)
+    st.markdown("# 知客 ZhiKe AI")
+    st.markdown("<p>面向业务人员的 AI 业务工作台。客户、任务、反馈与 KPI 仅归属于当前账号。</p>", unsafe_allow_html=True)
+    login, register = st.tabs(["登录", "注册账号"])
+    with login:
+        with st.form("login"):
+            email = st.text_input("邮箱")
+            password = st.text_input("密码", type="password")
+            submit = st.form_submit_button("登录", type="primary", width="stretch")
+        if submit:
+            user = authenticate_user(email, password)
+            if user:
+                st.session_state.user = user
+                st.rerun()
+            st.error("邮箱或密码不正确。")
+    with register:
+        with st.form("register"):
+            name = st.text_input("姓名")
+            email = st.text_input("邮箱", key="register_email")
+            password = st.text_input("设置密码（至少 8 位）", type="password", key="register_password")
+            submit = st.form_submit_button("创建账号", type="primary", width="stretch")
+        if submit:
+            try:
+                st.session_state.user = create_user(email, name, password)
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+    st.markdown('</div></div>', unsafe_allow_html=True)
 
-    if dashboard["recent_feedback"]:
-        st.markdown("#### 最近反馈记录 / Recent Activity")
-        activity_rows = [
-            {
-                "日期": item["recorded_on"],
-                "客户": item["customer_name"],
-                "确认事件": item["event_label"],
-                "说明": item["note"],
-            }
-            for item in dashboard["recent_feedback"]
-        ]
-        st.dataframe(activity_rows, width="stretch", hide_index=True)
 
-    st.markdown("#### 记录一次跟进反馈 / Record Follow-up Feedback")
-    customers = st.session_state.w3_state.get("customers", [])
-    if not customers:
-        return
-    name_by_id = {item["id"]: item["name"] for item in customers}
-    default_index = 0
-    current_id = st.session_state.w3_current_customer_id
-    if current_id in name_by_id:
-        default_index = list(name_by_id).index(current_id)
-    with st.form("w3_feedback_form", clear_on_submit=True):
-        selected_id = st.selectbox(
-            "本次反馈对应客户 / Customer",
-            options=list(name_by_id),
-            index=default_index,
-            format_func=lambda item: name_by_id[item],
-        )
-        event = st.selectbox(
-            "业务员确认的跟进结果 / Confirmed Outcome",
-            options=list(EVENT_LABELS),
-            format_func=lambda item: EVENT_LABELS[item],
-        )
-        note = st.text_area("补充说明（可选） / Notes", placeholder="例如：客户确认周三 15:00 参加线上演示")
-        submitted = st.form_submit_button("保存反馈并更新 KPI / Save & Update")
-    if submitted:
-        try:
-            state, customer_name = record_feedback(st.session_state.w3_state, selected_id, event, note)
-            st.session_state.w3_state = state
-            st.success(f"已记录 {customer_name}：{EVENT_LABELS[event]}。KPI 已按确认反馈更新。 / Feedback recorded and KPI updated.")
+def sidebar() -> str:
+    user = st.session_state.user
+    with st.sidebar:
+        st.markdown('<div class="logo">知客 <span>ZhiKe AI</span></div>', unsafe_allow_html=True)
+        pages = list(NAVIGATION)
+        current = st.session_state.page if st.session_state.page in pages else pages[0]
+        page = st.radio("导航", pages, index=pages.index(current), format_func=lambda item: f"{NAVIGATION[item]}　{item}", label_visibility="collapsed")
+        st.session_state.page = page
+        st.markdown(f'<div class="side-note"><b>{user["display_name"]}</b><br>{user["email"]}<br><br>数据仅对当前账号可见<br>AI 原始记录会发送至已配置模型服务</div>', unsafe_allow_html=True)
+        if st.button("退出登录", width="stretch"):
+            st.session_state.user = None
+            st.session_state.selected_customer = None
             st.rerun()
-        except Exception as exc:
-            st.error(f"反馈记录失败 / Failed to record feedback：{exc}")
+    return page
 
-    st.caption(
-        f"数据范围 / Data scope：{dashboard['source_scope']} 当前会话客户 {dashboard['customer_count']} 位，"
-        f"已记录反馈 {dashboard['feedback_count']} 条。"
-    )
 
-api_ready = has_api_provider()
-runtime_label = runtime_mode() if api_ready else "Mock Skills Workflow"
-runtime_status = f"● {runtime_label} 已配置 / Connected" if api_ready else "● Mock Skills Workflow"
+def header(title: str, subtitle: str) -> None:
+    st.markdown(f'<div class="workspace-head"><div><h1>{title}</h1><div class="muted">{subtitle}</div></div><div class="muted">当前账号：{st.session_state.user["display_name"]}</div></div>', unsafe_allow_html=True)
 
-st.markdown(
-    f"""
-<section class="hero">
-  <div class="hero-grid">
-    <div>
-      <span class="hero-eyebrow">✦ W3 AGENT DEMO · 目标驱动</span>
-      <h1>知客 ZhiKe AI</h1>
-      <p class="hero-kicker">让客户信息，转化为下一步业务行动</p>
-      <p class="hero-desc">从非结构化沟通记录出发，完成客户理解、业务判断与行动生成；再由业务员确认反馈，形成可追溯的 KPI 进度和优先行动。</p>
-      <div class="hero-flow">
-        <span class="hero-node">客户理解</span><span class="hero-arrow">→</span>
-        <span class="hero-node">业务判断</span><span class="hero-arrow">→</span>
-        <span class="hero-node">行动生成</span><span class="hero-arrow">→</span>
-        <span class="hero-node">KPI 反馈</span>
-      </div>
-    </div>
-    <aside class="agent-panel">
-      <div class="agent-panel-top"><span class="live-dot"></span> AGENT STATUS</div>
-      <div class="agent-status">
-        <div class="agent-status-item"><span>业务 Skills</span><strong>7 个已编排</strong></div>
-        <div class="agent-status-item"><span>模型运行层</span><strong>{runtime_label}</strong></div>
-        <div class="agent-status-item"><span>KPI 数据边界</span><strong>会话内可追溯</strong></div>
-      </div>
-      <p class="agent-panel-foot">分析由模型辅助生成；业绩反馈仅由业务员确认后计入 KPI。</p>
-    </aside>
-  </div>
-</section>
-""",
-    unsafe_allow_html=True,
-)
 
-st.markdown(
-    f"""
-<div class="status-row">
-  <span class="status-pill prototype">W3 Agent Demo</span>
-  <span class="status-pill {'online' if api_ready else ''}">{runtime_status}</span>
-  <span class="status-pill">会话内 KPI / No Database</span>
-</div>
-<div class="step-strip">
-  <span class="step">① 信息输入</span><span class="step-arrow">→</span>
-  <span class="step">② 客户档案</span><span class="step-arrow">→</span>
-  <span class="step">③ 需求分析</span><span class="step-arrow">→</span>
-  <span class="step">④ 机会判断</span><span class="step-arrow">→</span>
-  <span class="step">⑤ 跟进建议</span><span class="step-arrow">→</span>
-  <span class="step">⑥ 沟通话术</span><span class="step-arrow">→</span>
-  <span class="step">⑦ 业务日报</span>
-</div>
-""",
-    unsafe_allow_html=True,
-)
+def dashboard() -> None:
+    user_id = st.session_state.user["id"]
+    snapshot = dashboard_snapshot(user_id)
+    header("今日业务工作台", "AI Business Workspace · 以人工确认的业务结果驱动 KPI")
+    targets = (("新增合格客户", snapshot["qualified_customers"], 3), ("有效沟通", snapshot["effective_communications"], 5), ("方案沟通/演示", snapshot["solution_meetings"], 2), ("重点客户推进", snapshot["priority_advanced"], 2))
+    cols = st.columns(4)
+    for column, (name, actual, target) in zip(cols, targets):
+        percent = min(100, round(actual / target * 100))
+        column.markdown(f'<div class="metric-card"><div class="metric-label">{name}</div><span class="metric-value">{actual}</span><span class="metric-target">/ {target}</span><div class="progress-track"><div class="progress-fill" style="width:{percent}%"></div></div><div class="metric-foot">完成进度 {percent}% · 仅统计人工确认</div></div>', unsafe_allow_html=True)
+    left, right = st.columns([1.7, 1], gap="large")
+    with left:
+        st.markdown('<div class="panel"><div class="panel-title">今日优先行动 <small>查看任务 ›</small></div>', unsafe_allow_html=True)
+        tasks = snapshot["tasks"][:5]
+        if tasks:
+            rows = ''.join(f"<tr><td><b>{task['customer_name']}</b></td><td>{task['title']}</td><td>{task['due_at'] or '未设截止时间'}</td><td>{pill(task['priority'])}</td><td>{pill(task['status'])}</td></tr>" for task in tasks)
+            st.markdown(f'<div class="table-wrap"><table><thead><tr><th>客户</th><th>下一步</th><th>截止时间</th><th>优先级</th><th>状态</th></tr></thead><tbody>{rows}</tbody></table></div>', unsafe_allow_html=True)
+        else:
+            st.info("暂无待办任务。创建客户分析后，可把 AI 跟进建议保存为任务。")
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel"><div class="panel-title">最近客户 <small>客户数据已持久化</small></div>', unsafe_allow_html=True)
+        customers = snapshot["customers"][:5]
+        if customers:
+            rows = ''.join(f"<tr><td><b>{item['name']}</b><br><span class='muted'>{item['industry'] or '待确认'}</span></td><td>{item['stage'] or '待确认'}</td><td>{pill(item['priority'] or '待确认')}</td><td>{item['updated_at'][:10]}</td></tr>" for item in customers)
+            st.markdown(f'<div class="table-wrap"><table><thead><tr><th>客户</th><th>当前阶段</th><th>优先级</th><th>最近更新</th></tr></thead><tbody>{rows}</tbody></table></div>', unsafe_allow_html=True)
+        else:
+            st.caption("尚无客户记录。")
+        st.markdown('</div>', unsafe_allow_html=True)
+    with right:
+        st.markdown('<div class="panel"><div class="panel-title">风险提醒 <small>基于客户记录</small></div>', unsafe_allow_html=True)
+        risks = [item for item in snapshot["customers"] if item.get("risk")][:4]
+        if risks:
+            for item in risks:
+                st.markdown(f"<div style='padding:10px 0;border-bottom:1px solid #EAECF0'><b>{item['name']}</b><br><span class='muted'>{item['risk']}</span></div>", unsafe_allow_html=True)
+        else:
+            st.caption("暂无风险提醒。")
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('<div class="panel"><div class="panel-title">AI 分析状态 <small>可追溯 Skills</small></div>', unsafe_allow_html=True)
+        st.markdown("客户解析　需求分析　商机判断　跟进建议　沟通话术　业务日报")
+        st.caption("每次分析都会保存本次运行来源、Skill 执行状态和报告版本。")
+        st.markdown('</div>', unsafe_allow_html=True)
 
-st.markdown(
-    """
-<div class="goal-console">
-  <div>
-    <h3>🎯 本次会话目标与 KPI / Session Goals &amp; KPI</h3>
-    <p>先定义业务节奏；KPI 仅会根据后续由业务员确认的反馈更新。 / Goals guide actions, not model-made performance.</p>
-  </div>
-  <span class="goal-badge">Session only · Not persisted</span>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-saved_goal = normalize_goal(st.session_state.w3_state.get("business_goal"))
-with st.form("w3_goal_form"):
-    goal_row_one = st.columns(3, gap="medium")
-    with goal_row_one[0]:
-        period = st.selectbox("目标周期 / Goal Period", ["本周", "本月"], index=0 if saved_goal["period"] == "本周" else 1)
-    with goal_row_one[1]:
-        total_workdays = st.number_input("周期总工作日 / Total Workdays", min_value=1, max_value=31, value=saved_goal["period_total_workdays"])
-    with goal_row_one[2]:
-        remaining_days = st.number_input("剩余工作日 / Working Days Left", min_value=0, max_value=31, value=saved_goal["remaining_workdays"])
 
-    goal_row_two = st.columns(3, gap="medium")
-    with goal_row_two[0]:
-        qualified_target = st.number_input("新增合格客户 / Qualified Customers", min_value=0, max_value=100, value=saved_goal["new_qualified_customers_target"])
-    with goal_row_two[1]:
-        communication_target = st.number_input("有效沟通 / Effective Contacts", min_value=0, max_value=200, value=saved_goal["effective_communications_target"])
-    with goal_row_two[2]:
-        meeting_target = st.number_input("方案沟通 / 演示 / Demos", min_value=0, max_value=100, value=saved_goal["solution_meetings_target"])
+def new_analysis() -> None:
+    header("新建客户分析", "粘贴原始记录 → 7 个 Skills 分析 → 人工确认 → 创建任务")
+    st.markdown('<div class="privacy"><b>数据与隐私提示</b><br>输入内容会发送至当前配置的第三方模型 API 用于生成分析。请勿输入身份证号、银行卡号、完整联系方式、合同密钥等敏感信息。知客在本服务器保存客户记录；外部模型服务的数据处理以其自身政策为准。</div>', unsafe_allow_html=True)
+    left, right = st.columns([1.7, 1], gap="large")
+    with left:
+        name = st.text_input("客户称谓（可选）", placeholder="例如：李总")
+        text = st.text_area("客户原始记录", key="analysis_input", height=260, placeholder="粘贴聊天记录、电话纪要、会议记录或业务备注。")
+        force_mock = st.toggle("强制使用本地 Mock 模式", value=not has_api_provider())
+        st.caption(f"当前运行源：{runtime_mode(force_mock=force_mock)}。生成过程会显示每一步真实运行来源。")
+        generate = st.button("开始 AI 分析", type="primary", width="stretch", disabled=not text.strip())
+    with right:
+        st.markdown("#### 示例案例")
+        for label, value in EXAMPLES.items():
+            if st.button(label, width="stretch"):
+                st.session_state.analysis_input = value
+                st.rerun()
+        st.markdown("#### 本次将执行")
+        st.caption("1. 客户信息解析\n\n2. 客户档案生成\n\n3. 客户需求分析\n\n4. 商机判断\n\n5. 跟进建议\n\n6. 沟通话术\n\n7. 业务日报")
+    if generate:
+        with st.status("正在执行 7 个业务 Skills…", expanded=True) as status:
+            result = business_agent_with_trace(text, force_mock=force_mock)
+            status.update(label="分析完成，正在保存客户与报告…", state="running")
+            metadata = infer_metadata(text, name)
+            customer_id = create_customer(st.session_state.user["id"], metadata["name"], text, metadata)
+            save_report(st.session_state.user["id"], customer_id, result["report"], result["trace"], runtime_mode(force_mock=force_mock))
+            status.update(label="客户分析已保存", state="complete", expanded=False)
+        st.session_state.selected_customer = customer_id
+        st.session_state.page = "客户管理"
+        st.success("已创建客户、保存 AI 报告，并进入客户详情。")
+        st.rerun()
 
-    goal_row_three = st.columns([1, 1, 1], gap="medium")
-    with goal_row_three[0]:
-        advance_target = st.number_input("重点客户推进 / Priority Advances", min_value=0, max_value=100, value=saved_goal["priority_customers_to_advance_target"])
-    _, save_column = goal_row_three[1:]
-    with save_column:
-        save_goal = st.form_submit_button("保存目标 / Save Goals", width="stretch")
-if save_goal:
-    st.session_state.w3_state["business_goal"] = normalize_goal(
-        {
-            "period": period,
-            "period_total_workdays": total_workdays,
-            "remaining_workdays": remaining_days,
-            "new_qualified_customers_target": qualified_target,
-            "effective_communications_target": communication_target,
-            "solution_meetings_target": meeting_target,
-            "priority_customers_to_advance_target": advance_target,
-        }
-    )
-    st.success("业务目标已保存到当前会话。 / Session goals saved.")
 
-left, right = st.columns([1.75, 1], gap="large")
+def customers_page() -> None:
+    user_id = st.session_state.user["id"]
+    header("客户管理", "客户资料、AI 结论和人工确认均按账号持久化保存")
+    customers = list_customers(user_id)
+    if not customers:
+        st.info("还没有客户。请先在“新建分析”中生成第一份客户报告。")
+        return
+    choices = {f"{item['name']} · {item['industry'] or '待确认'}": item["id"] for item in customers}
+    current = st.session_state.selected_customer
+    default = next((index for index, item in enumerate(choices.values()) if item == current), 0)
+    selected_label = st.selectbox("选择客户", list(choices), index=default)
+    customer = get_customer(user_id, choices[selected_label])
+    if not customer:
+        st.error("无法读取客户数据。")
+        return
+    st.session_state.selected_customer = customer["id"]
+    st.markdown(f"## {customer['name']}　{pill(customer['priority'] or '待确认')}", unsafe_allow_html=True)
+    st.markdown(source_badges(), unsafe_allow_html=True)
+    summary = st.columns(4)
+    for column, label, value in zip(summary, ("行业", "阶段", "风险", "状态"), (customer["industry"] or "待确认", customer["stage"] or "待确认", customer["risk"] or "待确认", customer["status"])):
+        column.markdown(f"<div class='metric-card'><div class='metric-label'>{label}</div><div style='font-weight:600;line-height:1.5'>{value}</div></div>", unsafe_allow_html=True)
+    tabs = st.tabs(["客户原始记录", "AI 分析报告", "任务与反馈", "数据边界"])
+    with tabs[0]:
+        st.markdown("### 原始记录")
+        st.text_area("来源：客户原话 / 业务员录入", value=customer["raw_note"], height=220, disabled=True)
+        st.caption("原始记录不自动等同于事实结论；AI 推断会在报告中单独标识，最终以人工确认版本为准。")
+    with tabs[1]:
+        if not customer["report"]:
+            st.info("该客户暂无已保存的 AI 报告。")
+        else:
+            render_trace(customer["trace"])
+            for key, title in (("customer_profile", "客户档案"), ("need_analysis", "客户需求分析"), ("opportunity_assessment", "业务机会判断"), ("follow_up_plan", "跟进建议"), ("communication_script", "沟通话术"), ("daily_report", "业务日报")):
+                with st.expander(title, expanded=key in {"customer_profile", "opportunity_assessment", "follow_up_plan"}):
+                    st.markdown(source_badges(), unsafe_allow_html=True)
+                    render_report(customer["report"][key])
+                    if key == "follow_up_plan":
+                        if st.button("将此建议创建为跟进任务", key=f"task_{customer['id']}"):
+                            create_task(user_id, customer["id"], "按 AI 跟进建议推进：" + customer["name"])
+                            st.success("任务已创建。")
+                    if key == "communication_script":
+                        st.code(customer["report"][key], language=None)
+                        st.caption("仅供复制、编辑和人工确认；知客不会直接向客户发送内容。")
+    with tabs[2]:
+        st.markdown("### 跟进任务")
+        with st.form("new_task"):
+            title = st.text_input("新建任务")
+            due_at = st.text_input("截止时间（可选）", placeholder="例如：2026-08-13 15:00")
+            if st.form_submit_button("创建任务"):
+                try:
+                    create_task(user_id, customer["id"], title, due_at, "人工创建")
+                    st.rerun()
+                except ValueError as exc:
+                    st.error(str(exc))
+        tasks = [task for task in list_tasks(user_id, include_done=True) if task["customer_name"] == customer["name"]]
+        for task in tasks:
+            left, middle, right = st.columns([5, 2, 2])
+            left.write(task["title"])
+            middle.write(task["status"])
+            if task["status"] != "已完成" and right.button("完成", key=f"done_{task['id']}"):
+                update_task_status(user_id, task["id"], "已完成")
+                st.rerun()
+        st.markdown("### 记录真实跟进结果")
+        with st.form("feedback"):
+            event = st.selectbox("业务员确认的结果", list(EVENT_LABELS), format_func=lambda item: EVENT_LABELS[item])
+            note = st.text_input("说明（可选）")
+            if st.form_submit_button("确认并更新 KPI"):
+                record_feedback_event(user_id, customer["id"], event, note)
+                st.success("已记录。KPI 仅按该人工确认事件计算。")
+                st.rerun()
+        for event in customer["feedback"]:
+            state = "已撤销" if event["is_reverted"] else "已确认"
+            cols = st.columns([5, 2, 2])
+            cols[0].write(f"{EVENT_LABELS.get(event['event_type'], event['event_type'])} · {event['note'] or '未补充说明'}")
+            cols[1].caption(event["created_at"][:16])
+            if not event["is_reverted"] and cols[2].button("撤销", key=f"revert_{event['id']}"):
+                revert_feedback_event(user_id, event["id"])
+                st.rerun()
+            elif event["is_reverted"]:
+                cols[2].caption(state)
+    with tabs[3]:
+        st.markdown('<div class="privacy"><b>数据范围</b><br>客户记录与 AI 报告保存在当前 ECS/服务器的应用数据库中，并按当前账号隔离。生成分析时，原始文本会发送到当前配置的模型 API。请使用脱敏示例或获得授权的业务信息；不要提交高敏感个人信息。</div>', unsafe_allow_html=True)
 
-with left:
-    input_type = st.selectbox(
-        "输入类型 / Input Type",
-        ["微信聊天记录", "电话纪要", "会议记录", "业务员手动备注"],
-    )
-    st.subheader("客户信息输入 / Customer Input")
-    customer_input = st.text_area(
-        "粘贴客户备注、聊天摘要、电话纪要或会议记录 / Paste Customer Notes",
-        key="customer_input",
-        height=210,
-        placeholder="例如：李总，做企业培训，最近想了解 AI 员工如何帮助销售团队做客户跟进……",
-    )
-    st.caption(f"当前输入 {len(customer_input.strip())} 个字符 · 无需预先整理，直接粘贴原始纪要即可 / Paste raw notes directly.")
-    st.caption("无需先整理格式；知客会自动提取客户信息、需求和待确认事项。 / Missing information is marked for confirmation.")
-    optional_name = st.text_input("客户称谓（可选） / Customer Name", placeholder="例如：李总")
-    optional_channel = st.selectbox(
-        "沟通渠道（可选） / Channel", ["未指定", "微信", "电话", "会议"]
-    )
-    optional_follow_up = st.text_input(
-        "计划跟进时间（可选） / Follow-up Time", placeholder="例如：下周三上午"
-    )
-    st.info("信息不完整也可以生成；缺失内容会标记为‘未知/待确认’，无需先补齐。 / Incomplete notes are accepted.")
 
-with right:
-    st.subheader("示例案例 / Demo Cases")
-    st.caption("点击后自动填充输入框，可继续编辑。 / Select a case to autofill the input.")
-    for label, text in EXAMPLES.items():
-        st.button(
-            label,
-            width="stretch",
-            on_click=select_example,
-            args=(text,),
-        )
-    st.markdown(
-        '<div class="scope"><strong>W2 范围 / W2 Scope</strong><br>Mock 客户仅用于跨客户日报演示；无数据库、登录、CRM 或微信接入。<br><span style="font-size:.78rem">Mock customers are for daily-report aggregation only.</span></div>',
-        unsafe_allow_html=True,
-    )
-    force_mock = st.toggle(
-        "强制使用 Mock 演示模式 / Force Mock Mode",
-        value=not api_ready,
-    )
-    st.caption(f"当前运行模式 / Runtime Mode：{runtime_mode(force_mock=force_mock)}")
+def tasks_page() -> None:
+    header("跟进任务", "把 AI 建议转成可执行、可完成、可追踪的业务动作")
+    tasks = list_tasks(st.session_state.user["id"], include_done=True)
+    if not tasks:
+        st.info("暂无任务。请从客户报告的“跟进建议”中创建任务。")
+        return
+    for task in tasks:
+        cols = st.columns([2, 5, 2, 2, 1])
+        cols[0].write(task["customer_name"])
+        cols[1].write(task["title"])
+        cols[2].write(task["due_at"] or "未设截止时间")
+        cols[3].markdown(pill(task["status"]), unsafe_allow_html=True)
+        if task["status"] == "待办" and cols[4].button("完成", key=f"task_done_{task['id']}"):
+            update_task_status(st.session_state.user["id"], task["id"], "已完成")
+            st.rerun()
 
-generate = st.button("生成业务报告 / Generate Business Report", type="primary", width="stretch")
 
-if generate:
-    try:
-        context_lines = [f"输入类型：{input_type}"]
-        if optional_name.strip():
-            context_lines.append(f"业务员补充的客户称谓：{optional_name.strip()}")
-        if optional_channel != "未指定":
-            context_lines.append(f"业务员补充的沟通渠道：{optional_channel}")
-        if optional_follow_up.strip():
-            context_lines.append(f"业务员补充的计划跟进时间：{optional_follow_up.strip()}")
-        enriched_input = "\n".join(context_lines) + "\n\n原始客户记录：\n" + customer_input
-        with st.status("知客正在按 7 个 Skills 处理客户信息 / Running 7 Agent Skills…", expanded=False) as status:
-            run_result = business_agent_with_trace(enriched_input, force_mock=force_mock)
-            st.session_state.report = run_result["report"]
-            st.session_state.agent_trace = run_result["trace"]
-            api_steps = sum(1 for item in run_result["trace"] if item["status"] == "api")
-            local_steps = sum(1 for item in run_result["trace"] if item["status"] == "local")
-            fallback_steps = sum(1 for item in run_result["trace"] if item["status"] == "fallback")
-            execution_summary = " · ".join(
-                (
-                    f"API Skills {api_steps}",
-                    f"本地 Mock Skills {local_steps}",
-                    f"安全回退 {fallback_steps}",
-                )
-            )
-            status.update(
-                label=f"业务报告已完成 / Report ready · {execution_summary}",
-                state="complete",
-                expanded=False,
-            )
-        # KPI state is deliberately isolated from the report-generation path:
-        # an unexpected KPI issue must never invalidate an already generated report.
-        try:
-            state, current_customer = ingest_customer(
-                st.session_state.w3_state,
-                customer_input,
-                customer_name=optional_name,
-            )
-            st.session_state.w3_state = state
-            st.session_state.w3_current_customer_id = current_customer["id"]
-        except Exception as state_exc:
-            st.warning(f"报告已生成，但本次未写入 W3 会话状态 / Report generated, but session state was not saved：{state_exc}")
-    except Exception as exc:
-        st.session_state.report = None
-        st.session_state.agent_trace = []
-        st.error(f"生成失败 / Generation failed：{exc}")
+def main() -> None:
+    init()
+    if not st.session_state.user:
+        login_screen()
+        return
+    page = sidebar()
+    if page == "工作台":
+        dashboard()
+    elif page == "新建分析":
+        new_analysis()
+    elif page == "客户管理":
+        customers_page()
+    else:
+        tasks_page()
 
-report = st.session_state.report
-if report:
-    st.markdown(
-        """
-<div class="result-head">
-  <strong>业务处理报告 / Business Processing Report</strong>
-  <span>✓ 7 Skills complete · Confirm feedback to update session KPI</span>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-    st.success("业务报告已生成。请在发送话术或作出业务决策前进行人工确认。 / Please confirm before sending or deciding.")
-    render_execution_trace(st.session_state.agent_trace)
-    tabs = st.tabs(
-        ["👤 客户档案 / Profile", "🔎 需求分析 / Needs", "📈 机会判断 / Opportunity", "✅ 跟进建议 / Follow-up", "💬 沟通话术 / Script", "🗓️ 业务日报 / Daily Report", "🎯 KPI 与行动 / Actions"]
-    )
-    keys = (
-        "customer_profile",
-        "need_analysis",
-        "opportunity_assessment",
-        "follow_up_plan",
-        "communication_script",
-        "daily_report",
-    )
-    for tab, key in zip(tabs, keys):
-        with tab:
-            render_report_content(report[key])
-    with tabs[-1]:
-        render_kpi_dashboard()
 
-st.divider()
-st.markdown(
-    '<div class="footer-note">W3 Agent Demo · KPI 仅统计当前会话内经业务员确认的反馈 · 不保存客户数据 · 最终发送与业务决策由人工确认<br><span style="font-size:.76rem">KPI counts only user-confirmed feedback in this session. No customer data is persisted.</span></div>',
-    unsafe_allow_html=True,
-)
+if __name__ == "__main__":
+    main()
