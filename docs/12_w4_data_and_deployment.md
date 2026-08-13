@@ -30,7 +30,7 @@ FastAPI（认证、客户、任务、KPI、Agent 调度）
 
 ## 3. 首次 ECS 部署
 
-以下以 Ubuntu ECS 为例。先在安全组放行 TCP `80`，并在域名解析完成后放行 `443`。服务器需预先安装 Docker Engine 与 Docker Compose Plugin。
+以下以 Ubuntu ECS 为例。赛事 ECS 不可使用 `80`、`443`、`8080`、`8443`，本项目将 Web 服务公开在 TCP `3000`；请确认服务器防火墙或安全组允许 TCP `3000`。服务器需预先安装 Docker Engine 与 Docker Compose Plugin。
 
 ```bash
 git clone https://github.com/joycii-gu/zhike-ai.git
@@ -42,12 +42,12 @@ nano .env
 在 `.env` 中至少填写：
 
 ```dotenv
-MINIMAX_API_KEY=你的真实密钥
-MINIMAX_BASE_URL=https://api.minimaxi.com/v1
-MINIMAX_MODEL=MiniMax-M2.7
+SYNSCALE_API_KEY=你的真实密钥
+SYNSCALE_BASE_URL=http://synscale.onesyn.ai/v1
+SYNSCALE_MODEL=deepseek-v4-flash
 ZHIKE_ENV=production
 ZHIKE_SESSION_SECRET=使用 openssl rand -hex 32 生成的随机值
-ZHIKE_COOKIE_SECURE=true
+ZHIKE_COOKIE_SECURE=false
 ```
 
 启动应用：
@@ -55,10 +55,10 @@ ZHIKE_COOKIE_SECURE=true
 ```bash
 docker compose up -d --build
 docker compose ps
-curl http://127.0.0.1/api/health
+curl http://127.0.0.1:3000/api/health
 ```
 
-访问 `http://<ECS 公网 IP>/` 可以完成首次可访问部署。正式路演应绑定域名，并以 Nginx/证书服务配置 HTTPS；在 HTTPS 生效前，临时演示可将 `.env` 的 `ZHIKE_COOKIE_SECURE=false`，随后必须改回 `true` 并重启。
+访问 `http://<ECS 公网 IP>:3000/` 可以完成首次可访问部署。当前赛事服务器禁用 80/443，因此本次演示使用 HTTP 与 `ZHIKE_COOKIE_SECURE=false`。若后续迁移到可使用 HTTPS 的环境，应将其改为 `true` 并重启。
 
 ## 4. 持久化与更新
 
@@ -80,7 +80,7 @@ docker run --rm -v zhike-ai_zhike_data:/data -v "$(pwd)":/backup \
 ## 5. 上线验收清单
 
 - [ ] `docker compose ps` 中 `api` 显示 healthy，`web` 为 running。
-- [ ] `http://<IP>/api/health` 返回 `status: ok`。
+- [ ] `http://<IP>:3000/api/health` 返回 `status: ok`。
 - [ ] 能注册账号、登录、创建客户分析并看到七步执行结果。
 - [ ] 在客户详情中确认一次跟进反馈，业务驾驶舱 KPI 随之变化。
 - [ ] 手机浏览器能正常完成登录、查看驾驶舱和新建分析。

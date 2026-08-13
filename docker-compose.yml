@@ -19,7 +19,9 @@ services:
       api:
         condition: service_healthy
     ports:
-      - "80:80"
+      # Competition ECS reserves 80/443/8080/8443. Nginx still listens on
+      # container port 80, while the public application is exposed on 3000.
+      - "3000:80"
     restart: unless-stopped
 
 volumes:
