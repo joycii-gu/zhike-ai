@@ -6,3 +6,5 @@ __pycache__/
 *.py[cod]
 data/
 docs/evidence/
+frontend/node_modules/
+frontend/dist/

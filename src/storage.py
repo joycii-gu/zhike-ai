@@ -15,11 +15,47 @@ import os
 from pathlib import Path
 import secrets
 import sqlite3
+import tempfile
 from typing import Any
 from uuid import uuid4
 
 
-DATABASE_PATH = Path(os.getenv("ZHIKE_DATABASE_PATH", "data/zhike.db"))
+# Do not depend on the process working directory: Streamlit may be launched
+# from a different location on Windows, Docker or an ECS service manager.
+# Windows Defender's Controlled Folder Access can block writes to Desktop, so
+# local Windows runs use the user's LocalAppData by default.  Docker/ECS uses
+# the project data directory (or the explicit ZHIKE_DATABASE_PATH override).
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _database_candidates() -> list[Path]:
+    configured = os.getenv("ZHIKE_DATABASE_PATH")
+    if configured:
+        # An explicit deployment path is intentional; do not silently store
+        # production data somewhere else when that mounted path is unavailable.
+        return [Path(configured).expanduser()]
+
+    if os.name == "nt":
+        app_data = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        return [
+            app_data / "ZhiKeAI" / "zhike.db",
+            Path(tempfile.gettempdir()) / "ZhiKeAI" / "zhike.db",
+        ]
+    return [PROJECT_ROOT / "data" / "zhike.db"]
+
+
+def _resolve_database_path() -> Path:
+    errors: list[str] = []
+    for candidate in _database_candidates():
+        try:
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError as exc:
+            errors.append(f"{candidate.parent}: {exc}")
+    raise RuntimeError("无法创建知客本地数据目录。" + "；".join(errors))
+
+
+DATABASE_PATH = _resolve_database_path()
 PBKDF2_ITERATIONS = 310_000
 
 

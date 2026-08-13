@@ -4,3 +4,5 @@ __pycache__/
 *.py[cod]
 .runtime_packages/
 data/
+frontend/node_modules/
+frontend/dist/

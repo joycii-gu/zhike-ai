@@ -167,9 +167,14 @@ def run_chained_workflow(
     mock_customers: list[dict[str, Any]],
     *,
     runtime_label: str = "MiniMax API",
+    allow_local_fallback: bool = False,
 ) -> AgentRunResult:
-    """Run all seven Skills in order with isolated per-step local fallbacks."""
-    local_report = run_mock_skills_pipeline(customer_input, mock_customers)
+    """Run all seven Skills in order.
+
+    A deployed API run fails transparently by default.  Local fallback remains
+    available only when an offline or controlled demo explicitly requests it.
+    """
+    local_report = run_mock_skills_pipeline(customer_input, mock_customers) if allow_local_fallback else None
     parsed = parse_customer_info(customer_input)
     outputs: dict[str, str] = {}
     trace: list[SkillTraceEntry] = []
@@ -215,13 +220,21 @@ def run_chained_workflow(
                 entry["detail"] = "首次输出未通过校验，重试后已完成结构化输出"
             trace.append(entry)
         except Exception as exc:
+            if not allow_local_fallback:
+                raise RuntimeError(
+                    f"{skill_id} API call failed; no local fallback was generated: {type(exc).__name__}"
+                ) from exc
             if skill_id == "customer_info_parse":
                 parsed = parse_customer_info(customer_input)
             elif report_field:
+                assert local_report is not None
                 outputs[report_field] = local_report[report_field]
             trace.append(_fallback_trace(skill_id, name, f"API 输出异常，已使用本地安全回退：{type(exc).__name__}"))
 
-    report = validate_report({field: outputs.get(field, local_report[field]) for field in local_report})
+    if local_report is None:
+        report = validate_report(outputs)
+    else:
+        report = validate_report({field: outputs.get(field, local_report[field]) for field in local_report})
     return {"report": report, "trace": trace}
 
 

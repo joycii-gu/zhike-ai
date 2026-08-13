@@ -252,7 +252,7 @@ class SynScaleProvider(BusinessAgentProvider):
         if not api_key:
             raise RuntimeError("未找到 SYNSCALE_API_KEY，请在 .env 或 Streamlit Secrets 中配置。")
 
-        self.model = _setting("SYNSCALE_MODEL", "deepseek-v4-pro")
+        self.model = _setting("SYNSCALE_MODEL", "deepseek-v4-flash")
         self.client = OpenAI(
             api_key=api_key,
             base_url=_setting("SYNSCALE_BASE_URL", "http://synscale.onesyn.ai/v1"),
@@ -333,10 +333,10 @@ class MockProvider(BusinessAgentProvider):
 
 
 def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, str]:
-    if not force_mock and _setting_any(("MINIMAX_API_KEY", "APP_KEY")):
-        return MiniMaxProvider(), "MiniMax API"
     if not force_mock and _setting("SYNSCALE_API_KEY"):
         return SynScaleProvider(), "SynScale API"
+    if not force_mock and _setting_any(("MINIMAX_API_KEY", "APP_KEY")):
+        return MiniMaxProvider(), "MiniMax API"
     if not force_mock and _setting("NVIDIA_API_KEY"):
         return NvidiaNimProvider(), "NVIDIA NIM API"
     if not force_mock and _setting("OPENAI_API_KEY"):

@@ -69,6 +69,7 @@ def test_step_failure_falls_back_without_breaking_report() -> None:
         unstable_call,
         "赵总希望整理企业服务客户需求并降低信息分散问题。",
         get_mock_customers(),
+        allow_local_fallback=True,
     )
     assert any(item["status"] == "fallback" for item in result["trace"])
     assert all(result["report"].values())
@@ -118,7 +119,10 @@ def test_structured_skill_response_is_not_mistaken_for_fallback() -> None:
 
 
 def test_synscale_is_preferred_when_configured() -> None:
-    values = {"SYNSCALE_API_KEY": "test-synscale-key"}
+    values = {
+        "SYNSCALE_API_KEY": "test-synscale-key",
+        "MINIMAX_API_KEY": "stale-minimax-key",
+    }
 
     def fake_setting(name: str, default: str = "") -> str:
         return values.get(name, default)
@@ -128,6 +132,23 @@ def test_synscale_is_preferred_when_configured() -> None:
 
     assert isinstance(provider, SynScaleProvider)
     assert label == "SynScale API"
+
+
+def test_api_run_does_not_hide_a_skill_failure_with_local_output() -> None:
+    def failing_call(_system: str, _user: str) -> dict:
+        raise RuntimeError("provider unavailable")
+
+    try:
+        run_chained_workflow(
+            failing_call,
+            "李总希望下周沟通 AI 客户跟进方案，并关注预算与部署难度。",
+            get_mock_customers(),
+            runtime_label="SynScale API",
+        )
+    except RuntimeError as exc:
+        assert "no local fallback" in str(exc)
+    else:
+        raise AssertionError("A failed API run must not return a local report")
 
 
 if __name__ == "__main__":
