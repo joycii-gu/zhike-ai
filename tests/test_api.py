@@ -35,6 +35,21 @@ def run_smoke_test() -> None:
         customer_id = response.json()["customer_id"]
         assert customer_id
 
+        # W4 low-input flow: a one-sentence post-conversation update creates
+        # only a reviewable action draft. A task exists only after confirmation.
+        response = client.post(
+            "/api/captures",
+            json={"customer_name": "李总", "capture": "已确认下周三线上演示，预算仍待确认。", "force_mock": True},
+        )
+        assert response.status_code == 201, response.text
+        payload = response.json()
+        assert payload["action_draft"]["status"] == "待确认"
+        assert payload["customer"]["name"] == "李总"
+
+        response = client.post("/api/action-drafts/confirm", json={"draft_id": payload["action_draft"]["id"]})
+        assert response.status_code == 200, response.text
+        assert response.json()["customer_id"] == payload["customer_id"]
+
         response = client.get("/api/dashboard")
         assert response.status_code == 200, response.text
         assert response.json()["customer_count"] >= 1

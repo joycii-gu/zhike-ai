@@ -127,6 +127,21 @@ def initialize_database() -> None:
             );
             CREATE INDEX IF NOT EXISTS idx_tasks_user_status
                 ON tasks(user_id, status, updated_at DESC);
+            CREATE TABLE IF NOT EXISTS action_drafts (
+                id TEXT PRIMARY KEY,
+                customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
+                user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                title TEXT NOT NULL,
+                due_at TEXT,
+                reason TEXT NOT NULL,
+                risk TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT '待确认',
+                created_at TEXT NOT NULL,
+                confirmed_at TEXT,
+                dismissed_at TEXT
+            );
+            CREATE INDEX IF NOT EXISTS idx_action_drafts_user_status
+                ON action_drafts(user_id, status, created_at DESC);
             CREATE TABLE IF NOT EXISTS feedback_events (
                 id TEXT PRIMARY KEY,
                 customer_id TEXT NOT NULL REFERENCES customers(id) ON DELETE CASCADE,
@@ -221,6 +236,100 @@ def create_customer(user_id: str, name: str, raw_note: str, metadata: dict[str, 
     return customer_id
 
 
+def find_customer_by_name(user_id: str, name: str) -> dict[str, Any] | None:
+    """Find the most recently updated owned customer with the same display name."""
+    normalized = name.strip()
+    if not normalized:
+        return None
+    with _connection() as db:
+        row = db.execute(
+            """SELECT * FROM customers WHERE user_id=? AND name=?
+               ORDER BY updated_at DESC LIMIT 1""",
+            (user_id, normalized),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def append_customer_capture(
+    user_id: str, customer_id: str, capture: str, metadata: dict[str, str]
+) -> None:
+    """Append a short real-world business update without losing original evidence."""
+    with _connection() as db:
+        row = db.execute(
+            "SELECT raw_note FROM customers WHERE id=? AND user_id=?", (customer_id, user_id)
+        ).fetchone()
+        if not row:
+            raise ValueError("未找到该客户。")
+        raw_note = f"{row['raw_note']}\n\n[业务进展] {capture.strip()}"
+        db.execute(
+            """UPDATE customers SET raw_note=?,industry=?,stage=?,priority=?,risk=?,updated_at=?
+               WHERE id=? AND user_id=?""",
+            (
+                raw_note,
+                metadata.get("industry"), metadata.get("stage"),
+                metadata.get("priority"), metadata.get("risk"),
+                _now(), customer_id, user_id,
+            ),
+        )
+
+
+def create_action_draft(
+    user_id: str, customer_id: str, title: str, reason: str, risk: str, due_at: str = ""
+) -> dict[str, str]:
+    draft = {
+        "id": uuid4().hex,
+        "customer_id": customer_id,
+        "title": title.strip() or "确认下一步跟进动作",
+        "due_at": due_at.strip(),
+        "reason": reason.strip() or "来自本次客户沟通进展的 AI 建议",
+        "risk": risk.strip() or "待确认",
+        "status": "待确认",
+    }
+    with _connection() as db:
+        db.execute(
+            """INSERT INTO action_drafts(id,customer_id,user_id,title,due_at,reason,risk,status,created_at)
+               VALUES(?,?,?,?,?,?,?,?,?)""",
+            (
+                draft["id"], customer_id, user_id, draft["title"], draft["due_at"] or None,
+                draft["reason"], draft["risk"], draft["status"], _now(),
+            ),
+        )
+    return draft
+
+
+def confirm_action_draft(user_id: str, draft_id: str) -> dict[str, str]:
+    """Create a real task only after the businessperson confirms the AI draft."""
+    with _connection() as db:
+        row = db.execute(
+            """SELECT * FROM action_drafts
+               WHERE id=? AND user_id=? AND status='待确认'""", (draft_id, user_id)
+        ).fetchone()
+        if not row:
+            raise ValueError("该行动建议不存在、已处理或无权访问。")
+        task_id = uuid4().hex
+        now = _now()
+        db.execute(
+            """INSERT INTO tasks(id,customer_id,user_id,title,due_at,source,created_at,updated_at)
+               VALUES(?,?,?,?,?,?,?,?)""",
+            (task_id, row["customer_id"], user_id, row["title"], row["due_at"], "AI 建议（人工确认）", now, now),
+        )
+        db.execute(
+            "UPDATE action_drafts SET status='已确认',confirmed_at=? WHERE id=?", (now, draft_id)
+        )
+    return {"id": task_id, "customer_id": row["customer_id"], "title": row["title"]}
+
+
+def dismiss_action_draft(user_id: str, draft_id: str) -> None:
+    with _connection() as db:
+        cursor = db.execute(
+            """UPDATE action_drafts SET status='已忽略',dismissed_at=?
+               WHERE id=? AND user_id=? AND status='待确认'""",
+            (_now(), draft_id, user_id),
+        )
+    if cursor.rowcount != 1:
+        raise ValueError("该行动建议不存在、已处理或无权访问。")
+
+
 def save_report(user_id: str, customer_id: str, report: dict[str, Any], trace: list[dict[str, Any]], provider: str) -> str:
     report_id = uuid4().hex
     with _connection() as db:
@@ -304,7 +413,7 @@ def list_tasks(user_id: str, include_done: bool = False) -> list[dict[str, Any]]
     clause = "" if include_done else "AND t.status != '已完成'"
     with _connection() as db:
         rows = db.execute(
-            f"""SELECT t.id,t.title,t.due_at,t.status,t.source,c.name AS customer_name,c.priority,c.risk
+            f"""SELECT t.id,t.customer_id,t.title,t.due_at,t.status,t.source,c.name AS customer_name,c.priority,c.risk
                  FROM tasks t JOIN customers c ON c.id=t.customer_id
                  WHERE t.user_id=? {clause} ORDER BY CASE c.priority WHEN '高' THEN 0 WHEN '中' THEN 1 ELSE 2 END, t.updated_at DESC""",
             (user_id,),

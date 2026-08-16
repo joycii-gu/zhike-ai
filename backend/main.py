@@ -21,11 +21,16 @@ from backend.security import (
 )
 from src.agent import business_agent_with_trace, has_api_provider, runtime_mode
 from src.storage import (
+    append_customer_capture,
     authenticate_user,
+    confirm_action_draft,
     create_customer,
+    create_action_draft,
     create_task,
     create_user,
     dashboard_snapshot,
+    dismiss_action_draft,
+    find_customer_by_name,
     get_customer,
     initialize_database,
     list_customers,
@@ -72,6 +77,15 @@ class AnalysisPayload(BaseModel):
     force_mock: bool = False
 
 
+class CapturePayload(BaseModel):
+    """A minimum-input record of an action that has already happened."""
+
+    capture: str = Field(min_length=2, max_length=4000)
+    customer_id: str = Field(default="", max_length=64)
+    customer_name: str = Field(default="", max_length=80)
+    force_mock: bool = False
+
+
 class TaskPayload(BaseModel):
     customer_id: str
     title: str = Field(min_length=1, max_length=300)
@@ -86,6 +100,10 @@ class FeedbackPayload(BaseModel):
     customer_id: str
     event_type: Literal["need_confirmed", "effective_communication", "solution_meeting", "priority_advanced"]
     note: str = Field(default="", max_length=500)
+
+
+class ActionDraftPayload(BaseModel):
+    draft_id: str
 
 
 def _validate_email(email: str) -> str:
@@ -117,6 +135,15 @@ def _metadata(text: str, name: str) -> dict[str, str]:
     priority = "高" if any(key in text for key in ("本周", "下周", "尽快", "演示", "报价")) else "中"
     risk = "预算待确认" if "预算" in text and any(key in text for key in ("不明确", "未知", "未定", "没有")) else "待确认"
     return {"name": inferred_name, "industry": industry, "stage": stage, "priority": priority, "risk": risk}
+
+
+def _draft_title(report: dict[str, Any]) -> str:
+    """Turn the agent's follow-up output into a short, editable confirmation item."""
+    raw = str(report.get("follow_up_plan", ""))
+    lines = [line.strip(" -•0123456789.：:") for line in raw.splitlines()]
+    candidate = next((line for line in lines if len(line) >= 6), "确认本次客户的下一步跟进动作")
+    candidate = re.sub(r"\s+", " ", candidate)
+    return candidate[:120]
 
 
 def _set_session(response: Response, user_id: str) -> None:
@@ -157,9 +184,10 @@ def login(payload: LoginPayload, response: Response) -> dict[str, Any]:
     return {"user": user}
 
 
-@app.post("/api/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
-def logout(response: Response) -> None:
+@app.post("/api/auth/logout", status_code=status.HTTP_200_OK)
+def logout(response: Response) -> dict[str, bool]:
     response.delete_cookie(COOKIE_NAME, path="/")
+    return {"ok": True}
 
 
 @app.get("/api/auth/me")
@@ -208,6 +236,82 @@ def analyse(payload: AnalysisPayload, user_id: str = Depends(_user_id)) -> dict[
     return {"customer_id": customer_id, "report_id": report_id, "customer": get_customer(user_id, customer_id), "runtime": provider}
 
 
+@app.post("/api/captures", status_code=status.HTTP_201_CREATED)
+def capture_business_update(payload: CapturePayload, user_id: str = Depends(_user_id)) -> dict[str, Any]:
+    """Convert one post-conversation update into a reviewable next action.
+
+    This endpoint deliberately does not create a task.  The resulting action
+    remains a draft until the businessperson confirms it in the UI.
+    """
+    if not payload.force_mock and not has_api_provider():
+        raise HTTPException(status_code=503, detail="当前没有可用的模型 API，请稍后重试。")
+
+    existing: dict[str, Any] | None = None
+    if payload.customer_id:
+        existing = get_customer(user_id, payload.customer_id)
+        if not existing:
+            raise HTTPException(status_code=404, detail="未找到该客户。")
+    elif payload.customer_name.strip():
+        existing = find_customer_by_name(user_id, payload.customer_name)
+
+    # An existing customer's past record is used as limited context.  The new
+    # capture is visibly separated so the Agent can distinguish new facts.
+    historical_note = str(existing.get("raw_note", "")) if existing else ""
+    analysis_input = (
+        f"历史客户记录：\n{historical_note[-8000:]}\n\n本次业务进展（优先依据）：\n{payload.capture.strip()}"
+        if historical_note
+        else payload.capture.strip()
+    )
+    try:
+        result = business_agent_with_trace(analysis_input, force_mock=payload.force_mock)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=f"模型服务暂时不可用，请重试。{exc}") from exc
+
+    known_name = str(existing.get("name", "")) if existing else payload.customer_name
+    metadata = _metadata(analysis_input, known_name)
+    if existing:
+        customer_id = str(existing["id"])
+        append_customer_capture(user_id, customer_id, payload.capture, metadata)
+    else:
+        customer_id = create_customer(user_id, metadata["name"], payload.capture, metadata)
+
+    provider = runtime_mode(force_mock=payload.force_mock)
+    report_id = save_report(user_id, customer_id, result["report"], result["trace"], provider)
+    draft = create_action_draft(
+        user_id,
+        customer_id,
+        _draft_title(result["report"]),
+        reason="基于本次业务进展与客户上下文生成；请在执行前人工确认。",
+        risk=metadata["risk"],
+    )
+    return {
+        "customer_id": customer_id,
+        "report_id": report_id,
+        "customer": get_customer(user_id, customer_id),
+        "action_draft": draft,
+        "runtime": provider,
+    }
+
+
+@app.post("/api/action-drafts/confirm")
+def confirm_action(payload: ActionDraftPayload, user_id: str = Depends(_user_id)) -> dict[str, str]:
+    try:
+        return confirm_action_draft(user_id, payload.draft_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@app.post("/api/action-drafts/dismiss")
+def dismiss_action(payload: ActionDraftPayload, user_id: str = Depends(_user_id)) -> dict[str, bool]:
+    try:
+        dismiss_action_draft(user_id, payload.draft_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"ok": True}
+
+
 @app.get("/api/tasks")
 def tasks(include_done: bool = False, user_id: str = Depends(_user_id)) -> list[dict[str, Any]]:
     return list_tasks(user_id, include_done=include_done)
@@ -247,3 +351,5 @@ def undo_feedback(event_id: str, user_id: str = Depends(_user_id)) -> dict[str, 
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return {"ok": True}
+    dismiss_action_draft,
+    find_customer_by_name,
