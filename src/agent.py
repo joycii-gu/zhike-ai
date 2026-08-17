@@ -20,7 +20,14 @@ load_dotenv()
 
 
 def _parse_json_response(content: Any) -> dict[str, Any]:
-    """Parse JSON returned with optional reasoning or Markdown wrappers."""
+    """Parse a provider JSON response and normalize arrays to an output object.
+
+    Public Skill contracts are allowed to return either a JSON object or a
+    JSON array.  In particular, ``follow_up`` defines its result as an array
+    of action items.  The runtime consumes objects, so an array is represented
+    as ``{"output": [...]}`` at this boundary instead of treating a valid
+    Skill response as an API failure.
+    """
     if isinstance(content, list):
         content = "".join(
             item.get("text", "") if isinstance(item, dict) else str(item)
@@ -39,27 +46,37 @@ def _parse_json_response(content: Any) -> dict[str, Any]:
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL | re.IGNORECASE).strip()
     cleaned = cleaned.replace("```json", "").replace("```JSON", "").replace("```", "").strip()
 
-    try:
-        payload = json.loads(cleaned)
+    def as_object(payload: Any) -> dict[str, Any] | None:
         if isinstance(payload, dict):
             return payload
+        if isinstance(payload, list):
+            return {"output": payload}
         if isinstance(payload, str):
-            nested = json.loads(payload)
-            if isinstance(nested, dict):
-                return nested
+            try:
+                nested = json.loads(payload)
+            except json.JSONDecodeError:
+                return None
+            return as_object(nested)
+        return None
+
+    try:
+        normalized = as_object(json.loads(cleaned))
+        if normalized is not None:
+            return normalized
     except json.JSONDecodeError:
         pass
 
     decoder = json.JSONDecoder()
     for index, character in enumerate(cleaned):
-        if character != "{":
+        if character not in "[{":
             continue
         try:
             payload, _ = decoder.raw_decode(cleaned[index:])
         except json.JSONDecodeError:
             continue
-        if isinstance(payload, dict):
-            return payload
+        normalized = as_object(payload)
+        if normalized is not None:
+            return normalized
     raise RuntimeError("模型返回内容不是有效 JSON，请检查模型输出或提示词。")
 
 

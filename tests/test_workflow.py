@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from src.agent import SynScaleProvider, _select_provider
+from src.agent import SynScaleProvider, _parse_json_response, _select_provider
 from src.mock_customers import get_mock_customers
 from src.skills import SKILL_ORDER, load_skill_definition, skill_files
 from src.workflow import run_chained_workflow, run_local_workflow
@@ -118,6 +118,33 @@ def test_structured_skill_response_is_not_mistaken_for_fallback() -> None:
     assert "行动重点" in result["report"]["follow_up_plan"]
 
 
+def test_follow_up_skill_json_array_is_normalized_as_api_output() -> None:
+    """The public follow_up Skill contract intentionally returns an array."""
+    payload = _parse_json_response(
+        '[{"动作":"确认线上沟通时间","对象":"李总","优先级":"高"}]'
+    )
+    assert payload == {
+        "output": [{"动作": "确认线上沟通时间", "对象": "李总", "优先级": "高"}]
+    }
+
+    def array_follow_up_call(_system: str, user: str) -> dict:
+        if "Skill 1" in user:
+            return {"facts": {"customer_name": "李总"}, "inferences": [], "unknowns": [], "evidence": []}
+        if "Skill 5" in user:
+            return _parse_json_response(
+                '[{"动作":"确认线上沟通时间","对象":"李总","时点建议":"本周","沟通目标":"确认需求","准备材料":"问题清单","优先级":"高"}]'
+            )
+        return {"output": "- 已完成结构化输出"}
+
+    result = run_chained_workflow(
+        array_follow_up_call,
+        "李总希望下周线上沟通 AI 客户跟进方案。",
+        get_mock_customers(),
+    )
+    assert all(item["status"] == "api" for item in result["trace"])
+    assert "确认线上沟通时间" in result["report"]["follow_up_plan"]
+
+
 def test_synscale_is_preferred_when_configured() -> None:
     values = {
         "SYNSCALE_API_KEY": "test-synscale-key",
@@ -157,5 +184,6 @@ if __name__ == "__main__":
     test_transient_skill_failure_retries_before_fallback()
     test_local_workflow_has_a_full_trace()
     test_structured_skill_response_is_not_mistaken_for_fallback()
+    test_follow_up_skill_json_array_is_normalized_as_api_output()
     test_synscale_is_preferred_when_configured()
     print("W3 workflow regression tests passed")
