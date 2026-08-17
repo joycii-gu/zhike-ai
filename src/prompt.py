@@ -15,7 +15,7 @@ SYSTEM_PROMPT = """你是知客 ZhiKe AI，一名面向业务员的 AI 业务处
 3. opportunity_assessment：机会等级只能使用“🟢 高”“🟡 中”“🔴 低”，并列出有利信号、风险因素、判断依据；
 4. follow_up_plan：包含下一步动作、时间建议、沟通目标；
 5. communication_script：生成微信或电话沟通参考话术；
-6. daily_report：联合当前客户与 Mock 今日客户，包含今日客户列表、优先级排序、待办事项、风险提醒、明日计划和数据范围说明。
+6. daily_report：仅汇总当前客户及输入中给定的同账号客户摘要，包含今日客户列表、优先级排序、待办事项、风险提醒、明日计划和数据范围说明。
 
 约束：
 - 不得虚构客户信息、预算、决策权限或成交概率；
@@ -24,7 +24,7 @@ SYSTEM_PROMPT = """你是知客 ZhiKe AI，一名面向业务员的 AI 业务处
 - 不能因为客户感兴趣就直接判断为高机会；
 - 话术不得承诺未经验证的效果；
 - 输出仅供业务员参考，最终发送和决策由人工确认；
-- Mock 客户只用于 W2 演示，不代表数据库或真实历史记录。
+- 只有明确进入 Mock 演示模式时才可以使用演示客户；正式账号日报不得混入演示客户。
 """
 
 
@@ -103,14 +103,18 @@ def build_skill_prompt(
         "opportunity_judgement": "执行 Skill 4：业务机会判断。审慎给出高/中高/中/低/暂不判断之一，同时给出有利信号、不确定因素、风险和依据。不得给出成交概率。",
         "follow_up": "执行 Skill 5：跟进建议。每条建议必须含动作、对象、时点和目标；不能跳过需求确认直接强推成交。",
         "communication": "执行 Skill 6：沟通话术。生成自然、简洁、可编辑的参考话术；不得承诺未经验证的效果或价格。",
-        "daily_report": "执行 Skill 7：业务日报。仅联合当前客户与给定 Mock 客户，汇总优先级、待办、风险和明日计划，并声明数据范围。",
+        "daily_report": "执行 Skill 7：业务日报。仅联合当前客户与给定的同账号客户摘要，汇总优先级、待办、风险和明日计划，并声明数据范围。不得编造或混入其他客户。",
     }
     if skill_id not in instructions:
         raise ValueError(f"未知的 Workflow Skill：{skill_id}")
 
     mock_block = ""
     if skill_id == "daily_report":
-        mock_block = f"\n\nW2 演示 Mock 客户（仅可用于日报）：\n{_compact_json(mock_customers, 2800)}"
+        mock_block = (
+            "\n\n当前账号可用于日报汇总的客户摘要（只可使用下列名称；当前客户的上游结果优先）：\n"
+            f"{_compact_json(mock_customers, 2800)}\n"
+            "若该数组为空，则日报只能写当前客户，不能补写任何未在上下文出现的客户。"
+        )
     # Keep one stable JSON envelope across every Skill.  Previously the
     # public follow_up definition requested a bare array while the runtime
     # requested {"output": "..."}, which made model replies ambiguous.

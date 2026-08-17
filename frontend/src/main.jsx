@@ -84,11 +84,11 @@ function Dashboard({ dashboard, tasks, customers, onCreate, onCustomer }) {
 }
 
 function Analysis({ onDone, customers = [] }) {
-  const [note, setNote] = useState(""), [name, setName] = useState(""), [customerId, setCustomerId] = useState(""), [mock, setMock] = useState(false), [busy, setBusy] = useState(false), [stage, setStage] = useState(""), [error, setError] = useState(""), [mode, setMode] = useState("quick"), [captureResult, setCaptureResult] = useState(null), [confirming, setConfirming] = useState(false);
+  const [note, setNote] = useState(""), [name, setName] = useState(""), [customerId, setCustomerId] = useState(""), [mock, setMock] = useState(false), [busy, setBusy] = useState(false), [stage, setStage] = useState(""), [error, setError] = useState(""), [mode, setMode] = useState("quick"), [captureResult, setCaptureResult] = useState(null), [confirming, setConfirming] = useState(false), [scriptCopied, setScriptCopied] = useState(false);
   const run = async () => {
     const minimum = mode === "quick" ? 2 : 8;
     if (note.trim().length < minimum) return setError(mode === "quick" ? "请写下一句本次业务进展" : "请至少输入 8 个字符的客户记录");
-    setBusy(true); setError(""); setCaptureResult(null);
+    setBusy(true); setError(""); setCaptureResult(null); setScriptCopied(false);
     const steps = mode === "quick" ? ["识别本次沟通变化", "结合客户上下文判断优先级", "生成待确认的下一步行动"] : ["提取客户关键信息", "分析需求与机会", "生成跟进与话术", "汇总报告并保存"];
     let i = 0; setStage(steps[0]); const timer = window.setInterval(() => { i = Math.min(i + 1, steps.length - 1); setStage(steps[i]); }, 1100);
     try {
@@ -113,12 +113,15 @@ function Analysis({ onDone, customers = [] }) {
     catch (err) { setError(err.message); }
   };
   const copyScript = async () => {
-    const script = captureResult?.customer?.report?.communication_script;
+    const script = captureResult?.customer?.report?.communication_script || captureResult?.report?.communication_script;
     if (!script) { setError("本次分析暂未生成可复制的话术，请查看完整分析结果。"); return; }
-    try { await navigator.clipboard.writeText(script); }
-    catch { setError("复制失败，请手动复制话术内容。"); }
+    try {
+      await copyToClipboard(plainText(script));
+      setError(""); setScriptCopied(true);
+      window.setTimeout(() => setScriptCopied(false), 1800);
+    } catch { setError("浏览器未能自动复制，请手动选择话术内容复制。"); }
   };
-  return <section className="analysis-layout"><div className="analysis-main"><div className="capture-intro"><p className="eyebrow">AI ACTION INBOX</p><h2>少录入，直接得到下一步</h2><p>完成一次电话、微信或会议后，只记下关键变化。知客会生成可确认的待办、风险提醒和后续行动。</p></div><div className="mode-switch"><button className={mode === "quick" ? "selected" : ""} onClick={() => { setMode("quick"); setError(""); }}>快速记录 <span>推荐</span></button><button className={mode === "deep" ? "selected" : ""} onClick={() => { setMode("deep"); setError(""); }}>深度分析</button></div><div className="privacy-banner"><b>数据与隐私提示</b><span>输入内容会发送至当前配置的模型服务用于分析。请勿输入身份证号、银行卡号、完整联系方式、合同密钥等敏感信息。</span></div>{captureResult ? <article className="action-confirm-card"><p className="eyebrow">AI ACTION DRAFT · 待人工确认</p><h3>已识别本次进展，建议你现在做这一步</h3><div className="action-confirm-main"><div><span>客户</span><b>{captureResult.customer?.name}</b></div><div><span>建议行动</span><b>{captureResult.action_draft?.title}</b></div><div><span>风险提示</span><b>{captureResult.action_draft?.risk || "待确认"}</b></div></div><p className="action-reason">{captureResult.action_draft?.reason}</p><div className="action-confirm-buttons"><button className="primary" disabled={confirming} onClick={confirmDraft}>{confirming ? "确认中…" : "确认并创建待办"}</button><button className="secondary" onClick={copyScript}>复制沟通话术</button><button className="secondary" onClick={dismissDraft}>暂不创建</button></div><small>这是一项 AI 建议。只有你确认后才会写入任务列表；不会自动发送消息或计入 KPI。</small></article> : <><div className="form-grid">{mode === "quick" && <label>关联已有客户 <small>可选；选中后自动写回该客户</small><select value={customerId} onChange={(e) => { setCustomerId(e.target.value); if (e.target.value) setName(""); }}><option value="">新客户或暂不关联</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.industry || "待确认"}</option>)}</select></label>}<label>客户称谓 <small>可选</small><input disabled={Boolean(customerId)} value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：李总；留空则由知客识别" /></label></div><label className="note-label">{mode === "quick" ? "本次发生了什么？" : "客户原始记录"}<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={mode === "quick" ? "例如：李总刚确认下周三下午可以演示，但希望先看到数据安全说明；预算仍待确认。" : "粘贴聊天记录、电话纪要、会议记录或业务备注。无需预先整理；知客会标记事实、推断与待确认项。"} /></label><p className="input-helper">{mode === "quick" ? "只需一句进展，不必重复粘贴整段聊天记录。" : "适合首次建立客户档案或需要重新完整判断时使用。"}</p><div className="analysis-options"><label className="switch"><input type="checkbox" checked={mock} onChange={(e) => setMock(e.target.checked)} /><span></span>强制使用本地 Mock 模式</label><p>模型不可用时，结果会明确标记为回退生成。</p></div>{error && <div className="form-error">{error}</div>}<button className="primary generate" disabled={busy} onClick={run}>{busy ? `AI 正在${stage}…` : mode === "quick" ? "生成下一步行动 →" : "生成完整业务分析 →"}</button>{busy && <div className="loading"><i></i><span>{stage}</span><small>正在执行必要的业务 Skills，请勿重复提交。</small></div>}</>}</div><aside className="examples"><p className="eyebrow">QUICK START</p><h3>快速体验</h3>{Object.entries(EXAMPLES).map(([label, value]) => <button key={label} onClick={() => { setMode("deep"); setNote(value); }}>{label}<span>填充 →</span></button>)}<article><b>不把 AI 建议当成已完成业绩</b><p>知客负责整理与建议；发送、跟进和 KPI 只由业务员的人工确认结果驱动。</p></article></aside></section>;
+  return <section className="analysis-layout"><div className="analysis-main"><div className="capture-intro"><p className="eyebrow">AI ACTION INBOX</p><h2>少录入，直接得到下一步</h2><p>完成一次电话、微信或会议后，只记下关键变化。知客会生成可确认的待办、风险提醒和后续行动。</p></div><div className="mode-switch"><button className={mode === "quick" ? "selected" : ""} onClick={() => { setMode("quick"); setError(""); }}>快速记录 <span>推荐</span></button><button className={mode === "deep" ? "selected" : ""} onClick={() => { setMode("deep"); setError(""); }}>深度分析</button></div><div className="privacy-banner"><b>数据与隐私提示</b><span>输入内容会发送至当前配置的模型服务用于分析。请勿输入身份证号、银行卡号、完整联系方式、合同密钥等敏感信息。</span></div>{captureResult ? <article className="action-confirm-card"><p className="eyebrow">AI ACTION DRAFT · 待人工确认</p><h3>已识别本次进展，建议你现在做这一步</h3><div className="action-confirm-main"><div><span>客户</span><b>{captureResult.customer?.name}</b></div><div><span>建议行动</span><b>{captureResult.action_draft?.title}</b></div><div><span>风险提示</span><b>{captureResult.action_draft?.risk || "待确认"}</b></div></div><p className="action-reason">{captureResult.action_draft?.reason}</p><div className="action-confirm-buttons"><button className="primary" disabled={confirming} onClick={confirmDraft}>{confirming ? "确认中…" : "确认并创建待办"}</button><button className="secondary" onClick={copyScript}>{scriptCopied ? "✓ 已复制话术" : "复制沟通话术"}</button><button className="secondary" onClick={dismissDraft}>暂不创建</button></div><small>这是一项 AI 建议。只有你确认后才会写入任务列表；不会自动发送消息或计入 KPI。</small></article> : <><div className="form-grid">{mode === "quick" && <label>关联已有客户 <small>可选；选中后自动写回该客户</small><select value={customerId} onChange={(e) => { setCustomerId(e.target.value); if (e.target.value) setName(""); }}><option value="">新客户或暂不关联</option>{customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.industry || "待确认"}</option>)}</select></label>}<label>客户称谓 <small>可选</small><input disabled={Boolean(customerId)} value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：李总；留空则由知客识别" /></label></div><label className="note-label">{mode === "quick" ? "本次发生了什么？" : "客户原始记录"}<textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder={mode === "quick" ? "例如：李总刚确认下周三下午可以演示，但希望先看到数据安全说明；预算仍待确认。" : "粘贴聊天记录、电话纪要、会议记录或业务备注。无需预先整理；知客会标记事实、推断与待确认项。"} /></label><p className="input-helper">{mode === "quick" ? "只需一句进展，不必重复粘贴整段聊天记录。" : "适合首次建立客户档案或需要重新完整判断时使用。"}</p><div className="analysis-options"><label className="switch"><input type="checkbox" checked={mock} onChange={(e) => setMock(e.target.checked)} /><span></span>强制使用本地 Mock 模式</label><p>模型不可用时，结果会明确标记为回退生成。</p></div>{error && <div className="form-error">{error}</div>}<button className="primary generate" disabled={busy} onClick={run}>{busy ? `AI 正在${stage}…` : mode === "quick" ? "生成下一步行动 →" : "生成完整业务分析 →"}</button>{busy && <div className="loading"><i></i><span>{stage}</span><small>正在执行必要的业务 Skills，请勿重复提交。</small></div>}</>}</div><aside className="examples"><p className="eyebrow">QUICK START</p><h3>快速体验</h3>{Object.entries(EXAMPLES).map(([label, value]) => <button key={label} onClick={() => { setMode("deep"); setNote(value); }}>{label}<span>填充 →</span></button>)}<article><b>不把 AI 建议当成已完成业绩</b><p>知客负责整理与建议；发送、跟进和 KPI 只由业务员的人工确认结果驱动。</p></article></aside></section>;
 }
 
 const REPORT_META = {
@@ -132,6 +135,26 @@ const REPORT_META = {
 
 function plainText(value = "") {
   return String(value).replace(/\*\*/g, "").replace(/`/g, "").replace(/<br\s*\/?>/gi, "\n").trim();
+}
+
+async function copyToClipboard(value) {
+  const text = String(value || "").trim();
+  if (!text) throw new Error("没有可复制的内容");
+  // Clipboard API needs HTTPS in most browsers.  ECS may be accessed through
+  // an HTTP address during the competition, so retain a user-gesture fallback.
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("浏览器未授予复制权限");
 }
 
 function parseReport(content) {
@@ -190,8 +213,8 @@ function ReportView({ section, content }) {
   const [title, description] = REPORT_META[section] || ["分析结果", "AI 生成内容"];
   const blocks = parseReport(content);
   const copy = async () => {
-    try { await navigator.clipboard.writeText(plainText(content)); setCopied(true); setTimeout(() => setCopied(false), 1800); }
-    catch { /* Clipboard permission is browser-dependent; the visible content remains selectable. */ }
+    try { await copyToClipboard(plainText(content)); setCopied(true); setTimeout(() => setCopied(false), 1800); }
+    catch { setCopied(false); }
   };
   if (!content) return <Empty title="该模块暂无内容" body="完成一次分析后，知客会在这里展示可供人工确认的结果。" />;
   return <div className={`report-view report-${section}`}>

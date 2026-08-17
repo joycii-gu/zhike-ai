@@ -140,10 +140,47 @@ def _metadata(text: str, name: str) -> dict[str, str]:
 def _draft_title(report: dict[str, Any]) -> str:
     """Turn the agent's follow-up output into a short, editable confirmation item."""
     raw = str(report.get("follow_up_plan", ""))
-    lines = [line.strip(" -•0123456789.：:") for line in raw.splitlines()]
-    candidate = next((line for line in lines if len(line) >= 6), "确认本次客户的下一步跟进动作")
+    # Prefer an actual action field.  Markdown headings such as
+    # "## 跟进建议清单" must never become the businessperson's task title.
+    patterns = (
+        r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?(?:下一步)?动作(?:\*\*)?\s*[：:]\s*(.+)$",
+        r"(?im)^\s*(?:[-*]\s*)?(?:\*\*)?建议(?:\*\*)?\s*[：:]\s*(.+)$",
+        r"(?im)^\s*###?\s*(?:下一步)?动作\s*$\s*^\s*(?:[-*]\s*)?(.+)$",
+    )
+    candidate = ""
+    for pattern in patterns:
+        match = re.search(pattern, raw)
+        if match and match.group(1).strip():
+            candidate = match.group(1).strip()
+            break
+    if not candidate:
+        for line in raw.splitlines():
+            cleaned = re.sub(r"^\s*(?:[-*•]|\d+[.、])\s*", "", line).strip()
+            cleaned = re.sub(r"^#+\s*", "", cleaned).strip()
+            if (
+                len(cleaned) >= 6
+                and not re.fullmatch(r"(?:跟进建议|跟进建议清单|下一步行动|行动建议|优先级)[:：]?", cleaned)
+                and not cleaned.startswith(("优先级", "时间建议", "沟通目标", "准备材料"))
+            ):
+                candidate = cleaned
+                break
+    candidate = candidate or "确认本次客户的下一步跟进动作"
     candidate = re.sub(r"\s+", " ", candidate)
     return candidate[:120]
+
+
+def _daily_customer_context(user_id: str) -> list[dict[str, str]]:
+    """Return only the signed-in user's existing customers for Skill 7."""
+    return [
+        {
+            "客户": str(customer.get("name", "待确认客户")),
+            "行业": str(customer.get("industry", "待确认")),
+            "当前阶段": str(customer.get("stage", "待确认")),
+            "优先级": str(customer.get("priority", "中")),
+            "风险": str(customer.get("risk", "待确认")),
+        }
+        for customer in list_customers(user_id)
+    ]
 
 
 def _set_session(response: Response, user_id: str) -> None:
@@ -221,7 +258,11 @@ def analyse(payload: AnalysisPayload, user_id: str = Depends(_user_id)) -> dict[
             detail="No model API is configured. Add SYNSCALE_API_KEY on the ECS server, then retry.",
         )
     try:
-        result = business_agent_with_trace(payload.raw_note, force_mock=payload.force_mock)
+        result = business_agent_with_trace(
+            payload.raw_note,
+            force_mock=payload.force_mock,
+            daily_customers=_daily_customer_context(user_id),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -263,7 +304,11 @@ def capture_business_update(payload: CapturePayload, user_id: str = Depends(_use
         else payload.capture.strip()
     )
     try:
-        result = business_agent_with_trace(analysis_input, force_mock=payload.force_mock)
+        result = business_agent_with_trace(
+            analysis_input,
+            force_mock=payload.force_mock,
+            daily_customers=_daily_customer_context(user_id),
+        )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except RuntimeError as exc:

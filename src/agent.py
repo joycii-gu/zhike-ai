@@ -372,25 +372,39 @@ def has_api_provider() -> bool:
 
 
 def business_agent(
-    customer_input: str, *, force_mock: bool = False
+    customer_input: str,
+    *,
+    force_mock: bool = False,
+    daily_customers: list[dict[str, Any]] | None = None,
 ) -> BusinessReport:
     """Generate a full report through the selected provider."""
     normalized = customer_input.strip()
     if len(normalized) < 8:
         raise ValueError("请输入至少 8 个字符的客户信息或沟通记录。")
     provider, _ = _select_provider(force_mock=force_mock)
-    return provider.generate(normalized, get_mock_customers())
+    # Mock records are limited to an explicitly requested demonstration run.
+    # A deployed account supplies its own customer summaries for Skill 7.
+    customer_scope = get_mock_customers() if force_mock else (
+        daily_customers if daily_customers is not None else get_mock_customers()
+    )
+    return provider.generate(normalized, customer_scope)
 
 
 def business_agent_with_trace(
-    customer_input: str, *, force_mock: bool = False
+    customer_input: str,
+    *,
+    force_mock: bool = False,
+    daily_customers: list[dict[str, Any]] | None = None,
 ) -> AgentRunResult:
     """Run the W3 Agent and return both business report and actual Skills trace."""
     normalized = customer_input.strip()
     if len(normalized) < 8:
         raise ValueError("请输入至少 8 个字符的客户信息或沟通记录。")
     provider, _ = _select_provider(force_mock=force_mock)
-    return provider.generate_with_trace(normalized, get_mock_customers())
+    customer_scope = get_mock_customers() if force_mock else (
+        daily_customers if daily_customers is not None else get_mock_customers()
+    )
+    return provider.generate_with_trace(normalized, customer_scope)
 
 
 def runtime_mode(force_mock: bool = False) -> str:
