@@ -25,6 +25,28 @@ def test_chained_workflow_calls_all_seven_skills() -> None:
     assert all(result["report"].values())
 
 
+def test_account_daily_report_context_never_includes_w2_mock_customers() -> None:
+    """Normal account reports must not silently inherit W2 demo customers."""
+
+    seen_daily_prompt: list[str] = []
+
+    def model_call(system: str, user: str) -> dict:
+        if "Skill 7" in user:
+            seen_daily_prompt.append(user)
+        return fake_model_call(system, user)
+
+    run_chained_workflow(
+        model_call,
+        "赵总正在评估 AI 客户跟进工具，预算与决策人待确认。",
+        [{"客户": "赵总", "行业": "企业服务", "当前阶段": "方案评估", "优先级": "中"}],
+    )
+
+    assert len(seen_daily_prompt) == 1
+    assert "王经理" not in seen_daily_prompt[0]
+    assert "陈老师" not in seen_daily_prompt[0]
+    assert "赵总" in seen_daily_prompt[0]
+
+
 def test_all_public_skills_are_registered_and_loaded_by_runtime() -> None:
     """Public Skill folders must match the seven-step runtime workflow."""
     expected = (
