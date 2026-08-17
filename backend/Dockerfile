@@ -10,6 +10,9 @@ COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend ./backend
 COPY src ./src
+# The chained workflow loads the submitted Skill definitions at runtime.
+# Keep them in the production image as well as in local development.
+COPY skills ./skills
 
 RUN useradd --create-home appuser && mkdir -p /app/data && chown -R appuser:appuser /app
 USER appuser
