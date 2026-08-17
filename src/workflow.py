@@ -42,6 +42,21 @@ SKILL_STEPS: tuple[tuple[str, str, str | None], ...] = (
 )
 
 
+def _strict_json_retry_prompt(prompt: str, skill_id: str) -> str:
+    """Retry once with an explicit JSON-only response contract."""
+    expected = (
+        '{"output":[{"动作":"","对象":"","时点建议":"","沟通目标":"","准备材料":"","优先级":"高/中/低"}]}'
+        if skill_id == "follow_up"
+        else '{"output":"中文 Markdown 内容"}'
+    )
+    return (
+        f"{prompt}\n\n"
+        "【结构化输出重试】上一轮未得到可用结构化结果。"
+        "现在只返回一个可被 JSON.parse 解析的 JSON 对象："
+        f"{expected}。不要输出 Markdown 围栏、解释文字或对象外的任何字符。"
+    )
+
+
 def _fallback_trace(skill_id: str, name: str, detail: str) -> SkillTraceEntry:
     return {
         "skill_id": skill_id,
@@ -197,7 +212,8 @@ def run_chained_workflow(
             completed_after_retry = False
             for attempt in range(2):
                 try:
-                    payload = call_json(SKILL_SYSTEM_PROMPT, prompt)
+                    attempt_prompt = prompt if attempt == 0 else _strict_json_retry_prompt(prompt, skill_id)
+                    payload = call_json(SKILL_SYSTEM_PROMPT, attempt_prompt)
                     if skill_id == "customer_info_parse":
                         if not isinstance(payload, dict) or not payload:
                             raise ValueError("客户信息解析结果为空")
@@ -213,7 +229,9 @@ def run_chained_workflow(
                     last_error = exc
 
             if last_error is not None:
-                raise last_error
+                raise RuntimeError(
+                    f"{skill_id} did not return a valid structured result after retry: {last_error}"
+                ) from last_error
             entry = _api_trace(skill_id, name)
             entry["runtime"] = runtime_label
             if completed_after_retry:

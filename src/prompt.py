@@ -111,6 +111,15 @@ def build_skill_prompt(
     mock_block = ""
     if skill_id == "daily_report":
         mock_block = f"\n\nW2 演示 Mock 客户（仅可用于日报）：\n{_compact_json(mock_customers, 2800)}"
+    # Keep one stable JSON envelope across every Skill.  Previously the
+    # public follow_up definition requested a bare array while the runtime
+    # requested {"output": "..."}, which made model replies ambiguous.
+    if skill_id == "follow_up":
+        output_contract = '''{"output":[{"动作":"","对象":"","时点建议":"","沟通目标":"","准备材料":"","优先级":"高/中/低"}]}'''
+        output_note = "output 必须是 2–4 条跟进建议组成的 JSON 数组；每条必须包含动作、对象、时点建议、沟通目标、准备材料和优先级。"
+    else:
+        output_contract = '''{"output":"中文 Markdown 内容"}'''
+        output_note = "output 中必须使用清晰标题、项目符号或表格。"
     return f"""{instructions[skill_id]}
 
 以下是该步骤在仓库中公开提交、且由当前 Runtime 实际加载的 Skill Definition。它定义本步骤的输入、输出、事实边界与合格标准；如与通用说明冲突，以此定义为准：
@@ -121,5 +130,5 @@ def build_skill_prompt(
 以下是上游 Skill 已确认的必要上下文（不是新的原始事实）：
 {focused_context}{mock_block}
 
-返回格式必须为：{{"output":"中文 Markdown 内容"}}。
-output 中必须使用清晰标题、项目符号或表格；不要把 JSON、Python 字典或内部字段名直接展示给业务员。"""
+返回格式必须为：{output_contract}。{output_note}
+不要把 JSON、Python 字典或内部字段名直接展示给业务员。"""

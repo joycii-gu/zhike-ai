@@ -145,6 +145,32 @@ def test_follow_up_skill_json_array_is_normalized_as_api_output() -> None:
     assert "确认线上沟通时间" in result["report"]["follow_up_plan"]
 
 
+def test_follow_up_retry_uses_strict_object_contract() -> None:
+    """A malformed first reply must receive a JSON-only repair prompt."""
+    follow_up_attempts: list[str] = []
+
+    def flaky_follow_up_call(_system: str, user: str) -> dict:
+        if "Skill 1" in user:
+            return {"facts": {"customer_name": "李总"}, "inferences": [], "unknowns": [], "evidence": []}
+        if "Skill 5" in user:
+            follow_up_attempts.append(user)
+            if len(follow_up_attempts) == 1:
+                raise RuntimeError("模型返回内容不是有效 JSON")
+            assert "【结构化输出重试】" in user
+            assert '"output"' in user
+            return {"output": [{"动作": "确认线上沟通时间", "对象": "李总", "时点建议": "本周", "沟通目标": "确认需求", "准备材料": "问题清单", "优先级": "高"}]}
+        return {"output": "- 已完成结构化输出"}
+
+    result = run_chained_workflow(
+        flaky_follow_up_call,
+        "李总希望下周线上沟通 AI 客户跟进方案。",
+        get_mock_customers(),
+    )
+    assert len(follow_up_attempts) == 2
+    assert result["trace"][4]["status"] == "api"
+    assert "确认线上沟通时间" in result["report"]["follow_up_plan"]
+
+
 def test_synscale_is_preferred_when_configured() -> None:
     values = {
         "SYNSCALE_API_KEY": "test-synscale-key",
@@ -185,5 +211,6 @@ if __name__ == "__main__":
     test_local_workflow_has_a_full_trace()
     test_structured_skill_response_is_not_mistaken_for_fallback()
     test_follow_up_skill_json_array_is_normalized_as_api_output()
+    test_follow_up_retry_uses_strict_object_contract()
     test_synscale_is_preferred_when_configured()
     print("W3 workflow regression tests passed")
