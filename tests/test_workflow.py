@@ -242,6 +242,26 @@ def test_api_run_does_not_hide_a_skill_failure_with_local_output() -> None:
         raise AssertionError("A failed API run must not return a local report")
 
 
+def test_account_fallback_report_never_requires_w2_mock_customers() -> None:
+    """Guest/account fallback must not crash when its scoped customer set is empty."""
+
+    def failing_call(_system: str, _user: str) -> dict:
+        raise RuntimeError("provider unavailable")
+
+    result = run_chained_workflow(
+        failing_call,
+        "赵总希望了解 AI 如何协助企业客户跟进，预算仍待确认。",
+        [],
+        runtime_label="SynScale API",
+        allow_local_fallback=True,
+    )
+    assert len(result["trace"]) == 7
+    assert all(item["status"] == "fallback" for item in result["trace"])
+    assert all(result["report"].values())
+    assert "赵总" in result["report"]["daily_report"]
+    assert "王经理" not in result["report"]["daily_report"]
+
+
 if __name__ == "__main__":
     test_chained_workflow_calls_all_seven_skills()
     test_step_failure_falls_back_without_breaking_report()
@@ -251,4 +271,5 @@ if __name__ == "__main__":
     test_follow_up_skill_json_array_is_normalized_as_api_output()
     test_follow_up_retry_uses_strict_object_contract()
     test_synscale_is_preferred_when_configured()
+    test_account_fallback_report_never_requires_w2_mock_customers()
     print("W3 workflow regression tests passed")

@@ -166,8 +166,65 @@ def generate_communication_script(profile: dict[str, Any], follow_up: list[dict[
     }
 
 
+def _generate_scope_safe_daily_report(current: dict[str, Any], customers_in_scope: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build a safe daily report when the account scope has fewer than two demos.
+
+    W4 account and guest workspaces intentionally do not inherit W2 Mock
+    customers.  The local fallback must therefore work with an empty customer
+    scope instead of assuming two pre-seeded records exist.
+    """
+    current_name = current["profile"]["基本信息"]["称谓"].replace("【事实】", "")
+    current_level = current["opportunity"]["商机等级"]
+    current_action = "确认下一次沟通并补充待确认信息"
+    if current.get("follow_up"):
+        current_action = str(current["follow_up"][0].get("动作") or current_action)
+
+    today_customers = [{
+        "客户": current_name,
+        "要点": (
+            f"{current['profile']['基本信息']['行业']}，"
+            f"{current['profile']['决策阶段']}，机会等级{current_level}。"
+        ),
+    }]
+    todos = [{"客户": current_name, "待办": current_action}]
+    risks = [{"客户": current_name, "风险": "预算、决策权限和实施范围仍需确认"}]
+
+    for item in customers_in_scope:
+        name = str(item.get("name") or item.get("客户") or "待确认客户")
+        industry = str(item.get("industry") or item.get("行业") or "行业待确认")
+        stage = str(item.get("stage") or item.get("当前阶段") or "当前阶段待确认")
+        level = str(item.get("opportunity_level") or item.get("机会等级") or item.get("priority") or item.get("优先级") or "待判断")
+        todo = str(item.get("todo") or item.get("待办") or "确认下一步沟通安排")
+        risk = str(item.get("risk") or item.get("风险") or "关键信息待确认")
+        today_customers.append({"客户": name, "要点": f"{industry}，{stage}，机会等级{level}。"})
+        todos.append({"客户": name, "待办": todo})
+        risks.append({"客户": name, "风险": risk})
+
+    names = [item["客户"] for item in today_customers]
+    if customers_in_scope:
+        scope = (
+            f"本日报汇总当前客户及当前工作空间内 {len(customers_in_scope)} 位客户。"
+            "不引入 W2 演示 Mock 客户；数据仅归属当前账号或访客会话。"
+        )
+    else:
+        scope = "本日报仅汇总当前客户的本次分析结果；未引入 W2 演示 Mock 客户，数据不会跨账号或跨访客会话混入。"
+
+    return {
+        "数据组成": names,
+        "今日客户情况": today_customers,
+        "优先级排序": names,
+        "待办事项": todos,
+        "风险提醒": risks,
+        "明日计划": [f"推进{current_name}的下一次沟通并确认关键缺口。"],
+        "数据范围说明": scope,
+    }
+
+
 def generate_daily_report(current: dict[str, Any], mock_customers: list[dict[str, Any]]) -> dict[str, Any]:
     """Skill 7: aggregate only the current result and in-memory Mock customers."""
+    if len(mock_customers) < 2:
+        return _generate_scope_safe_daily_report(current, mock_customers)
+
     current_name = current["profile"]["基本信息"]["称谓"].replace("【事实】", "")
     current_level = current["opportunity"]["商机等级"]
     customers = [
