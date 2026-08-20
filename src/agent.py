@@ -278,15 +278,27 @@ class SynScaleProvider(BusinessAgentProvider):
         )
 
     def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
+        request = {
+            "model": self.model,
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            temperature=0.2,
-            max_tokens=1200,
-        )
+            "temperature": 0.2,
+            "max_tokens": 1600,
+            "response_format": {"type": "json_object"},
+        }
+        try:
+            response = self.client.chat.completions.create(**request)
+        except Exception as exc:
+            # Preserve compatibility with providers that expose the OpenAI
+            # endpoint but do not implement response_format.  Do not mask
+            # authentication, quota, timeout or network failures.
+            message = str(exc).lower()
+            if not any(marker in message for marker in ("response_format", "json_object", "unsupported parameter")):
+                raise
+            request.pop("response_format", None)
+            response = self.client.chat.completions.create(**request)
         return _parse_json_response(response.choices[0].message.content or "")
 
     def generate_with_trace(
@@ -297,6 +309,11 @@ class SynScaleProvider(BusinessAgentProvider):
             customer_input,
             mock_customers,
             runtime_label=f"SynScale API · {self.model}",
+            # A single malformed reply cannot discard an entire update. The
+            # trace labels the affected step as a local fallback in the UI.
+            # This does not inject W2 Mock customers: account runs provide
+            # only their own saved customer context to the local pipeline.
+            allow_local_fallback=True,
         )
 
 

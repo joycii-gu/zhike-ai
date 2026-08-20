@@ -61,8 +61,14 @@ def _compact_json(value: Any, limit: int = 5200) -> str:
     return text if len(text) <= limit else text[:limit] + "…（已剪裁）"
 
 
-def _compact_skill_definition(definition: str, limit: int = 6000) -> str:
-    """Keep the public Skill contract available to the runtime without unbounded prompts."""
+def _compact_skill_definition(definition: str, limit: int = 1800) -> str:
+    """Keep the public Skill contract available without burying the model in docs.
+
+    The complete ``SKILL.md`` remains the submitted and runtime-loaded source
+    of truth. A Skill call receives only its task-defining excerpt: this keeps
+    the public contract traceable while reducing truncation and invalid-JSON
+    failures caused by passing many thousands of documentation characters.
+    """
     normalized = definition.strip()
     return normalized if len(normalized) <= limit else normalized[:limit] + "\n\n[Skill definition truncated]"
 
