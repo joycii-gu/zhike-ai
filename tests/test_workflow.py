@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from src.agent import SynScaleProvider, _parse_json_response, _select_provider, business_agent_with_trace
+from src.agent import MiniMaxProvider, _parse_json_response, _select_provider, business_agent_with_trace
 from src.mock_customers import get_mock_customers
 from src.skills import SKILL_ORDER, load_skill_definition, skill_files
 from src.workflow import run_chained_workflow, run_local_workflow
@@ -209,7 +209,7 @@ def test_follow_up_retry_uses_strict_object_contract() -> None:
     assert "确认线上沟通时间" in result["report"]["follow_up_plan"]
 
 
-def test_synscale_is_preferred_when_configured() -> None:
+def test_minimax_is_the_only_production_provider() -> None:
     values = {
         "SYNSCALE_API_KEY": "test-synscale-key",
         "MINIMAX_API_KEY": "stale-minimax-key",
@@ -221,8 +221,8 @@ def test_synscale_is_preferred_when_configured() -> None:
     with patch("src.agent._setting", side_effect=fake_setting):
         provider, label = _select_provider()
 
-    assert isinstance(provider, SynScaleProvider)
-    assert label == "SynScale API"
+    assert isinstance(provider, MiniMaxProvider)
+    assert label == "MiniMax API"
 
 
 def test_api_run_does_not_hide_a_skill_failure_with_local_output() -> None:
@@ -234,7 +234,7 @@ def test_api_run_does_not_hide_a_skill_failure_with_local_output() -> None:
             failing_call,
             "李总希望下周沟通 AI 客户跟进方案，并关注预算与部署难度。",
             get_mock_customers(),
-            runtime_label="SynScale API",
+            runtime_label="MiniMax API",
         )
     except RuntimeError as exc:
         assert "no local fallback" in str(exc)
@@ -252,7 +252,7 @@ def test_account_fallback_report_never_requires_w2_mock_customers() -> None:
         failing_call,
         "赵总希望了解 AI 如何协助企业客户跟进，预算仍待确认。",
         [],
-        runtime_label="SynScale API",
+        runtime_label="MiniMax API",
         allow_local_fallback=True,
     )
     assert len(result["trace"]) == 7
@@ -270,6 +270,6 @@ if __name__ == "__main__":
     test_structured_skill_response_is_not_mistaken_for_fallback()
     test_follow_up_skill_json_array_is_normalized_as_api_output()
     test_follow_up_retry_uses_strict_object_contract()
-    test_synscale_is_preferred_when_configured()
+    test_minimax_is_the_only_production_provider()
     test_account_fallback_report_never_requires_w2_mock_customers()
     print("W3 workflow regression tests passed")

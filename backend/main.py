@@ -361,7 +361,7 @@ def analyse(payload: AnalysisPayload, user_id: str = Depends(_user_id)) -> dict[
     if not payload.force_mock and not has_api_provider():
         raise HTTPException(
             status_code=503,
-            detail="No model API is configured. Add SYNSCALE_API_KEY on the ECS server, then retry.",
+            detail="未配置 MiniMax API。请在服务器 .env 中填写 MINIMAX_API_KEY 后重试。",
         )
     try:
         result = business_agent_with_trace(

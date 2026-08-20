@@ -1,4 +1,4 @@
-"""Provider-neutral business agent with SynScale, MiniMax and local fallback modes."""
+"""Business agent using MiniMax in production and a local demo fallback."""
 
 from __future__ import annotations
 
@@ -165,6 +165,20 @@ def _setting_any(names: tuple[str, ...], default: str = "") -> str:
     return default
 
 
+def _direct_openai_client(*, api_key: str, base_url: str, timeout: float = 90.0):
+    """Create an OpenAI-compatible client without inheriting stale shell proxies."""
+    import httpx
+    from openai import OpenAI
+
+    return OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        timeout=timeout,
+        max_retries=2,
+        http_client=httpx.Client(timeout=timeout, trust_env=False),
+    )
+
+
 class BusinessAgentProvider(ABC):
     """Provider interface reserved for API and future HermesAgent adapters."""
 
@@ -229,12 +243,7 @@ class MiniMaxProvider(BusinessAgentProvider):
         model = _setting_any(("MINIMAX_MODEL", "MODEL_ID"), "MiniMax-M2.7")
         if not api_key:
             raise RuntimeError("未找到 MINIMAX_API_KEY，请在 .env 或 Streamlit Secrets 中配置。")
-        self.client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=90.0,
-            max_retries=2,
-        )
+        self.client = _direct_openai_client(api_key=api_key, base_url=base_url)
         self.model = model
 
     def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
@@ -270,11 +279,9 @@ class SynScaleProvider(BusinessAgentProvider):
             raise RuntimeError("未找到 SYNSCALE_API_KEY，请在 .env 或 Streamlit Secrets 中配置。")
 
         self.model = _setting("SYNSCALE_MODEL", "deepseek-v4-flash")
-        self.client = OpenAI(
+        self.client = _direct_openai_client(
             api_key=api_key,
             base_url=_setting("SYNSCALE_BASE_URL", "http://synscale.onesyn.ai/v1"),
-            timeout=90.0,
-            max_retries=2,
         )
 
     def _call_json(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
@@ -285,7 +292,7 @@ class SynScaleProvider(BusinessAgentProvider):
                 {"role": "user", "content": user_prompt},
             ],
             "temperature": 0.2,
-            "max_tokens": 1600,
+            "max_tokens": 2400,
             "response_format": {"type": "json_object"},
         }
         try:
@@ -367,24 +374,18 @@ class MockProvider(BusinessAgentProvider):
 
 
 def _select_provider(force_mock: bool = False) -> tuple[BusinessAgentProvider, str]:
-    if not force_mock and _setting("SYNSCALE_API_KEY"):
-        return SynScaleProvider(), "SynScale API"
+    # MiniMax is the only production provider for the W4 application.
+    # Legacy provider variables are deliberately ignored so an old ECS .env
+    # cannot silently route customer content to a different service.
     if not force_mock and _setting_any(("MINIMAX_API_KEY", "APP_KEY")):
         return MiniMaxProvider(), "MiniMax API"
-    if not force_mock and _setting("NVIDIA_API_KEY"):
-        return NvidiaNimProvider(), "NVIDIA NIM API"
-    if not force_mock and _setting("OPENAI_API_KEY"):
-        return OpenAIProvider(), "OpenAI API"
     return MockProvider(), "Mock Skills Workflow"
 
 
 def has_api_provider() -> bool:
     """Whether a model provider is configured through env or cloud secrets."""
     return bool(
-        _setting("SYNSCALE_API_KEY")
-        or _setting_any(("MINIMAX_API_KEY", "APP_KEY"))
-        or _setting("NVIDIA_API_KEY")
-        or _setting("OPENAI_API_KEY")
+        _setting_any(("MINIMAX_API_KEY", "APP_KEY"))
     )
 
 

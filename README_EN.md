@@ -48,7 +48,7 @@ Live demo: <https://zhike-ai-demo.streamlit.app/>
 docker compose up -d --build
 ```
 
-Open `http://localhost:3000`. In production, configure `SYNSCALE_API_KEY` and `ZHIKE_SESSION_SECRET` in `.env`; never commit real keys.
+Open `http://localhost:3000`. In production, configure `MINIMAX_API_KEY` and `ZHIKE_SESSION_SECRET` in `.env`; never commit real keys.
 
 ### W3 Streamlit Baseline
 
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-W3 uses MiniMax as its default provider for report generation. When both MiniMax and SynScale are configured, MiniMax takes precedence and SynScale remains an optional fallback provider. Without a model key, or with **Force Mock Mode** enabled, the app runs the local Mock Skills Workflow for stable demonstrations and regression tests.
+MiniMax is the only production provider for report generation. Without a MiniMax key, or with **Force Mock Mode** enabled, the app runs the local Mock Skills Workflow for stable demonstrations and regression tests.
 
 Local API configuration example. Never commit a real key to the repository:
 
@@ -68,7 +68,7 @@ MINIMAX_BASE_URL=https://api.minimaxi.com/v1
 MINIMAX_MODEL=MiniMax-M2.7
 ```
 
-For Streamlit Community Cloud, add the same fields in **App Settings → Secrets**. Optional SynScale fallback fields are listed in `.env.example`; never commit a real key.
+For Streamlit Community Cloud, add the same fields in **App Settings → Secrets**; never commit a real key.
 
 ## Project Structure
 

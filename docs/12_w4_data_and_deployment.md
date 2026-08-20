@@ -42,9 +42,9 @@ nano .env
 在 `.env` 中至少填写：
 
 ```dotenv
-SYNSCALE_API_KEY=你的真实密钥
-SYNSCALE_BASE_URL=http://synscale.onesyn.ai/v1
-SYNSCALE_MODEL=deepseek-v4-flash
+MINIMAX_API_KEY=你的真实密钥
+MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+MINIMAX_MODEL=MiniMax-M2.7
 ZHIKE_ENV=production
 ZHIKE_SESSION_SECRET=使用 openssl rand -hex 32 生成的随机值
 ZHIKE_COOKIE_SECURE=false

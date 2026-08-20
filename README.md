@@ -48,7 +48,7 @@
 docker compose up -d --build
 ```
 
-默认通过 `http://localhost:3000` 访问。生产部署应在 `.env` 中配置 `SYNSCALE_API_KEY` 与 `ZHIKE_SESSION_SECRET`，不要提交真实密钥。
+默认通过 `http://localhost:3000` 访问。生产部署应在 `.env` 中配置 `MINIMAX_API_KEY` 与 `ZHIKE_SESSION_SECRET`，不要提交真实密钥。
 
 ### W3 Streamlit 基线
 
@@ -58,7 +58,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-W3 默认使用 MiniMax 生成业务报告；如同时配置 MiniMax 与 SynScale，系统优先选择 MiniMax，SynScale 仅作为可选备用 Provider。未配置任何模型密钥或开启“强制使用 Mock 演示模式”时，系统使用本地 Mock Skills Workflow，便于稳定演示和回归测试。
+系统默认且唯一使用 MiniMax 生成业务报告。未配置 MiniMax 密钥或开启“强制使用 Mock 演示模式”时，系统使用本地 Mock Skills Workflow，便于稳定演示和回归测试。
 
 本地 API 配置示例（不要将真实密钥提交到仓库）：
 
@@ -68,7 +68,7 @@ MINIMAX_BASE_URL=https://api.minimaxi.com/v1
 MINIMAX_MODEL=MiniMax-M2.7
 ```
 
-部署到 Streamlit Community Cloud 时，将同名字段写入 **App Settings → Secrets**。可选 SynScale 备用配置见 `.env.example`；不要将真实密钥提交到仓库。
+部署到 Streamlit Community Cloud 时，将同名字段写入 **App Settings → Secrets**；不要将真实密钥提交到仓库。
 
 ## 项目结构
 
