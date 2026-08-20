@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import os
+import secrets
 from contextlib import asynccontextmanager
 from typing import Any, Literal
 
@@ -32,6 +33,7 @@ from src.storage import (
     dismiss_action_draft,
     find_customer_by_name,
     get_customer,
+    get_user,
     initialize_database,
     list_customers,
     list_tasks,
@@ -165,8 +167,38 @@ def _draft_title(report: dict[str, Any]) -> str:
                 candidate = cleaned
                 break
     candidate = candidate or "确认本次客户的下一步跟进动作"
-    candidate = re.sub(r"\s+", " ", candidate)
+    # The action draft is a product UI field, not a Markdown document.  Model
+    # formatting must never leak into the task title shown to a salesperson.
+    candidate = re.sub(r"[*`#_]", "", candidate)
+    candidate = re.sub(r"^\s*(?:动作|下一步动作|建议行动|行动建议|跟进建议(?:清单)?)\s*[：:]\s*", "", candidate)
+    candidate = re.sub(r"^\s*(?:[-*•]|\d+[.、])\s*", "", candidate)
+    candidate = re.sub(r"\s+", " ", candidate).strip(" -:：")
     return candidate[:120]
+
+
+def _display_task_title(value: Any) -> str:
+    """Return a readable, action-oriented label for both new and legacy tasks.
+
+    Older W2/W3 records can have a Markdown section heading (for example
+    ``# 跟进建议清单``) saved as their task title.  That is not an executable
+    action, so the UI must not present it as one.  New tasks are normalized by
+    ``_draft_title``; this function keeps historical rows honest at read time.
+    """
+    title = str(value or "")
+    title = re.sub(r"[*`#_]", "", title)
+    title = re.sub(r"^\s*(?:[-•]|\d+[.、])\s*", "", title)
+    title = re.sub(r"\s+", " ", title).strip(" -:：")
+    normalized = title.replace(" ", "")
+    generic_headings = {
+        "跟进建议清单",
+        "跟进建议",
+        "下一步行动",
+        "行动建议",
+        "建议行动",
+    }
+    if not title or normalized in generic_headings:
+        return "查看客户分析并确认下一步行动"
+    return title[:120]
 
 
 def _daily_customer_context(user_id: str) -> list[dict[str, str]]:
@@ -181,6 +213,64 @@ def _daily_customer_context(user_id: str) -> list[dict[str, str]]:
         }
         for customer in list_customers(user_id)
     ]
+
+
+def _account_daily_report(user_id: str) -> str:
+    """Build the daily view from the current account, never a saved demo prompt.
+
+    A report generated during an earlier W2 demonstration may still contain
+    Mock customer names in its stored JSON.  The W4 customer screen therefore
+    derives the daily-report tab from the signed-in account at read time.  It
+    keeps historical analysis modules intact while preventing old demo data
+    from being presented as the user's current business information.
+    """
+    customers = _daily_customer_context(user_id)
+    tasks = list_tasks(user_id, include_done=False)
+    lines = [
+        "# 业务日报",
+        "数据范围说明：仅汇总当前账号内已保存的客户与待办；不包含 W2 演示 Mock 客户。",
+        "## 今日客户情况",
+    ]
+    if customers:
+        lines.extend([
+            "| 客户 | 行业 | 当前阶段 | 优先级 | 风险 |",
+            "| --- | --- | --- | --- | --- |",
+        ])
+        for customer in customers:
+            lines.append(
+                "| {客户} | {行业} | {当前阶段} | {优先级} | {风险} |".format(
+                    **{key: str(value).replace("|", "／") for key, value in customer.items()}
+                )
+            )
+    else:
+        lines.append("当前账号暂未保存客户。完成一次分析后，客户会出现在此处。")
+
+    lines.append("## 优先级排序")
+    if customers:
+        rank = {"高": 0, "中高": 1, "中": 2, "低": 3}
+        for index, customer in enumerate(sorted(customers, key=lambda item: rank.get(item["优先级"], 9)), 1):
+            lines.append(f"- {index}. {customer['客户']}：{customer['优先级']}优先级；{customer['当前阶段']}。")
+    else:
+        lines.append("- 暂无可排序客户。")
+
+    lines.append("## 待办事项")
+    if tasks:
+        for task in tasks:
+            lines.append(
+                f"- {task['customer_name']}：{_display_task_title(task['title'])}"
+                f"（状态：{task['status']}）"
+            )
+    else:
+        lines.append("- 暂无已确认待办。AI 建议需由业务员确认后才会出现在这里。")
+    return "\n".join(lines)
+
+
+def _present_customer_for_account(customer: dict[str, Any], user_id: str) -> dict[str, Any]:
+    """Attach account-scoped daily data before returning a customer to the UI."""
+    report = customer.get("report")
+    if isinstance(report, dict):
+        customer["report"] = {**report, "daily_report": _account_daily_report(user_id)}
+    return customer
 
 
 def _set_session(response: Response, user_id: str) -> None:
@@ -221,6 +311,19 @@ def login(payload: LoginPayload, response: Response) -> dict[str, Any]:
     return {"user": user}
 
 
+@app.post("/api/auth/guest", status_code=status.HTTP_201_CREATED)
+def create_guest_session(response: Response) -> dict[str, Any]:
+    """Open a one-click, account-isolated visitor workspace without an AI call."""
+    token = secrets.token_urlsafe(18).replace("-", "").replace("_", "").lower()
+    user = create_user(
+        f"guest-{token}@visitor.zhike.local",
+        "访客演示",
+        secrets.token_urlsafe(32),
+    )
+    _set_session(response, user["id"])
+    return {"user": {**user, "is_guest": True}}
+
+
 @app.post("/api/auth/logout", status_code=status.HTTP_200_OK)
 def logout(response: Response) -> dict[str, bool]:
     response.delete_cookie(COOKIE_NAME, path="/")
@@ -228,8 +331,11 @@ def logout(response: Response) -> dict[str, bool]:
 
 
 @app.get("/api/auth/me")
-def me(user_id: str = Depends(_user_id)) -> dict[str, str]:
-    return {"id": user_id}
+def me(user_id: str = Depends(_user_id)) -> dict[str, Any]:
+    user = get_user(user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="当前会话已失效，请重新进入。")
+    return {**user, "is_guest": user["email"].endswith("@visitor.zhike.local")}
 
 
 @app.get("/api/dashboard")
@@ -247,7 +353,7 @@ def customer(customer_id: str, user_id: str = Depends(_user_id)) -> dict[str, An
     data = get_customer(user_id, customer_id)
     if not data:
         raise HTTPException(status_code=404, detail="未找到该客户")
-    return data
+    return _present_customer_for_account(data, user_id)
 
 
 @app.post("/api/analysis", status_code=status.HTTP_201_CREATED)
@@ -274,7 +380,8 @@ def analyse(payload: AnalysisPayload, user_id: str = Depends(_user_id)) -> dict[
     customer_id = create_customer(user_id, metadata["name"], payload.raw_note, metadata)
     provider = runtime_mode(force_mock=payload.force_mock)
     report_id = save_report(user_id, customer_id, result["report"], result["trace"], provider)
-    return {"customer_id": customer_id, "report_id": report_id, "customer": get_customer(user_id, customer_id), "runtime": provider}
+    customer = get_customer(user_id, customer_id)
+    return {"customer_id": customer_id, "report_id": report_id, "customer": _present_customer_for_account(customer, user_id), "runtime": provider}
 
 
 @app.post("/api/captures", status_code=status.HTTP_201_CREATED)
@@ -334,7 +441,7 @@ def capture_business_update(payload: CapturePayload, user_id: str = Depends(_use
     return {
         "customer_id": customer_id,
         "report_id": report_id,
-        "customer": get_customer(user_id, customer_id),
+        "customer": _present_customer_for_account(get_customer(user_id, customer_id), user_id),
         "action_draft": draft,
         "runtime": provider,
     }
@@ -359,7 +466,12 @@ def dismiss_action(payload: ActionDraftPayload, user_id: str = Depends(_user_id)
 
 @app.get("/api/tasks")
 def tasks(include_done: bool = False, user_id: str = Depends(_user_id)) -> list[dict[str, Any]]:
-    return list_tasks(user_id, include_done=include_done)
+    # Normalize legacy records at the API boundary as well.  This is a
+    # presentation-only migration: it never overwrites a user's stored task.
+    return [
+        {**task, "title": _display_task_title(task.get("title"))}
+        for task in list_tasks(user_id, include_done=include_done)
+    ]
 
 
 @app.post("/api/tasks", status_code=status.HTTP_201_CREATED)

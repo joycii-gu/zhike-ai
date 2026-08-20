@@ -208,6 +208,17 @@ def authenticate_user(email: str, password: str) -> dict[str, str] | None:
     return {"id": row["id"], "email": row["email"], "display_name": row["display_name"]}
 
 
+def get_user(user_id: str) -> dict[str, str] | None:
+    """Return the minimum profile needed to restore an authenticated session."""
+    with _connection() as db:
+        row = db.execute(
+            "SELECT id,email,display_name FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+    if not row:
+        return None
+    return {"id": row["id"], "email": row["email"], "display_name": row["display_name"]}
+
+
 def save_goal(user_id: str, payload: dict[str, Any]) -> None:
     with _connection() as db:
         db.execute(

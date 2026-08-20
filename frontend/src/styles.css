@@ -21,3 +21,10 @@ nav { display: grid; gap: 8px; }.nav { text-align: left; border: 0; border-radiu
 @media(max-width:760px){.report-overview{display:block}.report-copy{margin-top:13px}.report-fields{grid-template-columns:1fr}.report-block{padding:14px}.report-overview h3{font-size:20px}}
 /* Structured Markdown-table rendering inside the daily report. */
 .report-table-wrap{overflow-x:auto;margin-top:12px;border:1px solid #e4eaf2;border-radius:10px;background:#fff}.report-table{width:100%;min-width:510px;border-collapse:collapse;color:#354b67;font-size:13px;line-height:1.6}.report-table th{padding:11px 13px;background:#f4f7fb;color:#728298;text-align:left;font-size:11px;font-weight:700;letter-spacing:.02em}.report-table td{padding:12px 13px;vertical-align:top;border-top:1px solid #edf1f5;word-break:break-word}.report-table tbody tr:hover{background:#f9fbff}
+/* Visitor mode: a no-sign-up entry for judges. */
+.guest-badge { align-self: center; margin-left: 4px; padding: 2px 7px; border: 1px solid rgba(120, 177, 255, .42); border-radius: 999px; color: #9ac8ff; font-size: 10px; font-style: normal; font-weight: 700; letter-spacing: .04em; }
+.guest-entry { width: 100%; display: grid; gap: 4px; margin: 6px 0 2px; padding: 14px 16px; border: 1px solid #b8ceff; border-radius: 14px; background: linear-gradient(135deg, #f4f8ff, #eef3ff); color: #164687; text-align: left; cursor: pointer; }
+.guest-entry:hover:not(:disabled) { border-color: #2e6eea; box-shadow: 0 8px 22px rgba(37, 99, 235, .12); transform: translateY(-1px); }
+.guest-entry b { font-size: 15px; }.guest-entry span, .guest-note { color: #667d9d; font-size: 12px; line-height: 1.55; }.guest-note { margin: 7px 1px 4px; }
+.auth-divider { display: flex; align-items: center; gap: 10px; margin: 13px 0; color: #8a99ad; font-size: 12px; }.auth-divider::before, .auth-divider::after { content: ""; height: 1px; flex: 1; background: #e3e9f3; }
+@media (max-width: 760px) { .guest-entry { padding: 13px 14px; } }

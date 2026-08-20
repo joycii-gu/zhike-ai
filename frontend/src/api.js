@@ -13,6 +13,7 @@ async function request(path, options = {}) {
 export const api = {
   login: (payload) => request("/api/auth/login", { method: "POST", body: JSON.stringify(payload) }),
   register: (payload) => request("/api/auth/register", { method: "POST", body: JSON.stringify(payload) }),
+  guest: () => request("/api/auth/guest", { method: "POST" }),
   logout: () => request("/api/auth/logout", { method: "POST" }),
   me: () => request("/api/auth/me"),
   health: () => request("/api/health"),

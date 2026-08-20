@@ -384,9 +384,10 @@ def business_agent(
     provider, _ = _select_provider(force_mock=force_mock)
     # Mock records are limited to an explicitly requested demonstration run.
     # A deployed account supplies its own customer summaries for Skill 7.
-    customer_scope = get_mock_customers() if force_mock else (
-        daily_customers if daily_customers is not None else get_mock_customers()
-    )
+    # W2 mock customers are an explicit demonstration-only data source.  A
+    # signed-in application run must never silently inherit them just because
+    # the caller has not supplied other account customers yet.
+    customer_scope = get_mock_customers() if force_mock else (daily_customers or [])
     return provider.generate(normalized, customer_scope)
 
 
@@ -401,9 +402,9 @@ def business_agent_with_trace(
     if len(normalized) < 8:
         raise ValueError("请输入至少 8 个字符的客户信息或沟通记录。")
     provider, _ = _select_provider(force_mock=force_mock)
-    customer_scope = get_mock_customers() if force_mock else (
-        daily_customers if daily_customers is not None else get_mock_customers()
-    )
+    # See business_agent(): normal account runs use only the supplied account
+    # scope.  Mock records remain available solely through force_mock=True.
+    customer_scope = get_mock_customers() if force_mock else (daily_customers or [])
     return provider.generate_with_trace(normalized, customer_scope)
 
 

@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from src.agent import SynScaleProvider, _parse_json_response, _select_provider
+from src.agent import SynScaleProvider, _parse_json_response, _select_provider, business_agent_with_trace
 from src.mock_customers import get_mock_customers
 from src.skills import SKILL_ORDER, load_skill_definition, skill_files
 from src.workflow import run_chained_workflow, run_local_workflow
@@ -45,6 +45,22 @@ def test_account_daily_report_context_never_includes_w2_mock_customers() -> None
     assert "王经理" not in seen_daily_prompt[0]
     assert "陈老师" not in seen_daily_prompt[0]
     assert "赵总" in seen_daily_prompt[0]
+
+
+def test_normal_agent_run_does_not_use_mock_customers_when_scope_is_empty() -> None:
+    """Empty account state is not permission to inject W2 demo customers."""
+
+    seen_scope: list[list[dict]] = []
+
+    class Provider:
+        def generate_with_trace(self, _text, scope):
+            seen_scope.append(scope)
+            return {"report": {}, "trace": []}
+
+    with patch("src.agent._select_provider", return_value=(Provider(), "Test API")):
+        business_agent_with_trace("李总希望下周沟通 AI 客户跟进方案。", daily_customers=[])
+
+    assert seen_scope == [[]]
 
 
 def test_all_public_skills_are_registered_and_loaded_by_runtime() -> None:

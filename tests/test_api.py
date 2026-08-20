@@ -18,6 +18,17 @@ from backend.main import app  # noqa: E402
 
 def run_smoke_test() -> None:
     with TestClient(app) as client:
+        # Entering visitor mode only creates a separate account. It must not
+        # create business data or request the model runtime.
+        response = client.post("/api/auth/guest")
+        assert response.status_code == 201, response.text
+        assert response.json()["user"]["is_guest"] is True
+        response = client.get("/api/auth/me")
+        assert response.status_code == 200 and response.json()["is_guest"] is True, response.text
+        response = client.get("/api/customers")
+        assert response.status_code == 200 and response.json() == [], response.text
+        client.post("/api/auth/logout")
+
         response = client.post(
             "/api/auth/register",
             json={"email": "ecs-smoke@example.com", "display_name": "ECS 测试", "password": "safe-password-123"},
@@ -34,6 +45,26 @@ def run_smoke_test() -> None:
         assert response.status_code == 201, response.text
         customer_id = response.json()["customer_id"]
         assert customer_id
+
+        # Existing W2 mock output must not leak into an account's W4 daily
+        # view, even when the underlying report was produced in Mock mode.
+        response = client.get(f"/api/customers/{customer_id}")
+        assert response.status_code == 200, response.text
+        daily_report = response.json()["report"]["daily_report"]
+        assert "王经理" not in daily_report
+        assert "陈老师" not in daily_report
+        assert "李总" in daily_report
+
+        # Legacy Markdown section headings must never be presented as a task
+        # action to the businessperson.
+        response = client.post(
+            "/api/tasks",
+            json={"customer_id": customer_id, "title": "# 跟进建议清单"},
+        )
+        assert response.status_code == 201, response.text
+        response = client.get("/api/tasks?include_done=true")
+        assert response.status_code == 200, response.text
+        assert response.json()[0]["title"] == "查看客户分析并确认下一步行动"
 
         # W4 low-input flow: a one-sentence post-conversation update creates
         # only a reviewable action draft. A task exists only after confirmation.

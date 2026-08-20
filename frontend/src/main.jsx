@@ -44,9 +44,9 @@ function App() {
   };
   return <div className="app-shell">
     <aside className="sidebar">
-      <div className="brand"><b>知客</b><span>ZhiKe AI</span><small>AI Business Assistant</small></div>
+      <div className="brand"><b>知客</b><span>ZhiKe AI</span>{session?.is_guest && <em className="guest-badge">访客演示</em>}<small>AI Business Assistant</small></div>
       <nav>{NAV.map(([key, icon, label]) => <button key={key} className={page === key ? "nav active" : "nav"} onClick={() => setPage(key)}><i>{icon}</i>{label}</button>)}</nav>
-      <div className="sidebar-foot"><span className="avatar">知</span><div><b>我的业务空间</b><small>数据仅归属当前账号</small></div><button className="logout" onClick={() => api.logout().then(() => setSession(null))}>退出</button></div>
+      <div className="sidebar-foot"><span className="avatar">{session?.is_guest ? "访" : "知"}</span><div><b>{session?.is_guest ? "访客演示空间" : "我的业务空间"}</b><small>{session?.is_guest ? "独立数据，不与其他访客共享" : "数据仅归属当前账号"}</small></div><button className="logout" onClick={() => api.logout().then(() => setSession(null))}>退出</button></div>
     </aside>
     <main className="main"><header className="topbar"><div><p className="eyebrow">AI BUSINESS COMMAND CENTER</p><h1>{page === "dashboard" ? "今日业务驾驶舱" : page === "analysis" ? "新建客户分析" : page === "customers" ? "客户洞察" : "智能跟进"}</h1></div><div className="runtime"><span className={health?.api_configured ? "dot online" : "dot"}></span>{health?.runtime || "正在检查 Agent Runtime"}</div></header>
       {page === "dashboard" && <Dashboard dashboard={dashboard} tasks={tasks} customers={customers} onCreate={() => setPage("analysis")} onCustomer={chooseCustomer} />}
@@ -60,7 +60,8 @@ function App() {
 function Auth({ onAuth }) {
   const [mode, setMode] = useState("login"), [email, setEmail] = useState(""), [password, setPassword] = useState(""), [name, setName] = useState(""), [busy, setBusy] = useState(false), [error, setError] = useState("");
   const submit = async (e) => { e.preventDefault(); setBusy(true); setError(""); try { const data = mode === "login" ? await api.login({ email, password }) : await api.register({ email, display_name: name, password }); onAuth(data.user); } catch (err) { setError(err.message); } finally { setBusy(false); } };
-  return <div className="auth-page"><section className="auth-brand"><p className="brand-kicker">● AI BUSINESS COMMAND CENTER</p><h1>知客 <span>ZhiKe AI</span></h1><p>把分散的客户信息，转化为下一步业务行动。知客协助业务人员理解客户、推进任务，并以人工确认结果驱动业务 KPI。</p><div className="feature-pills"><span>客户洞察</span><span>智能跟进</span><span>风险提示</span><span>KPI 反馈</span></div><small>企业级业务工作空间<br/>你的客户、任务与反馈仅归属于当前账号</small></section><section className="auth-form-wrap"><form className="auth-card" onSubmit={submit}><p className="eyebrow">WELCOME TO ZHIKE</p><h2>{mode === "login" ? "欢迎回来" : "创建业务空间"}</h2><p>{mode === "login" ? "登录后继续管理你的客户与任务。" : "注册后即可创建你的 AI 业务工作台。"}</p>{mode === "register" && <label>姓名<input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：Stella" required /></label>}<label>邮箱<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="name@example.com" required /></label><label>密码<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" minLength="8" placeholder="至少 8 位" required /></label>{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? "正在处理…" : mode === "login" ? "登录业务空间" : "创建账号"}</button><button className="text-button" type="button" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>{mode === "login" ? "没有账号？立即注册" : "已有账号？返回登录"}</button><small className="privacy">登录即表示：你的数据仅在当前账户业务空间内管理；AI 分析会发送至已配置的模型服务。</small></form></section></div>;
+  const enterGuest = async () => { setBusy(true); setError(""); try { const data = await api.guest(); onAuth(data.user); } catch (err) { setError(err.message); } finally { setBusy(false); } };
+  return <div className="auth-page"><section className="auth-brand"><p className="brand-kicker">● AI BUSINESS COMMAND CENTER</p><h1>知客 <span>ZhiKe AI</span></h1><p>把分散的客户信息，转化为下一步业务行动。知客协助业务人员理解客户、推进任务，并以人工确认结果驱动业务 KPI。</p><div className="feature-pills"><span>客户洞察</span><span>智能跟进</span><span>风险提示</span><span>KPI 反馈</span></div><small>企业级业务工作空间<br/>你的客户、任务与反馈仅归属于当前账号</small></section><section className="auth-form-wrap"><form className="auth-card" onSubmit={submit}><p className="eyebrow">WELCOME TO ZHIKE</p><h2>{mode === "login" ? "欢迎回来" : "创建业务空间"}</h2><p>{mode === "login" ? "登录后继续管理你的客户与任务。" : "注册后即可创建你的 AI 业务工作台。"}</p><button className="guest-entry" type="button" disabled={busy} onClick={enterGuest}><b>先体验访客 Demo</b><span>无需注册 · 自动进入独立演示空间</span></button><p className="guest-note">进入访客空间不会自动调用 AI；仅在提交分析或记录进展时才会请求模型服务。请勿输入真实敏感客户信息。</p><div className="auth-divider"><span>或使用账号继续</span></div>{mode === "register" && <label>姓名<input value={name} onChange={(e) => setName(e.target.value)} placeholder="例如：Stella" required /></label>}<label>邮箱<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="name@example.com" required /></label><label>密码<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" minLength="8" placeholder="至少 8 位" required /></label>{error && <div className="form-error">{error}</div>}<button className="primary" disabled={busy}>{busy ? "正在处理…" : mode === "login" ? "登录业务空间" : "创建账号"}</button><button className="text-button" type="button" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>{mode === "login" ? "没有账号？立即注册" : "已有账号？返回登录"}</button><small className="privacy">访客数据与正式账号相互隔离；退出后无法从登录页找回访客空间。AI 分析会发送至已配置的模型服务。</small></form></section></div>;
 }
 
 function Dashboard({ dashboard, tasks, customers, onCreate, onCustomer }) {
@@ -94,7 +95,15 @@ function Analysis({ onDone, customers = [] }) {
     try {
       if (mode === "quick") {
         const data = await api.capture({ capture: note, customer_id: customerId, customer_name: name, force_mock: mock });
-        setCaptureResult(data);
+        setCaptureResult({
+          ...data,
+          action_draft: data.action_draft ? {
+            ...data.action_draft,
+            title: actionText(data.action_draft.title),
+            reason: businessText(data.action_draft.reason),
+            risk: businessText(data.action_draft.risk),
+          } : data.action_draft,
+        });
       } else {
         const data = await api.analyse({ raw_note: note, customer_name: name, force_mock: mock });
         onDone(data.customer);
@@ -116,7 +125,7 @@ function Analysis({ onDone, customers = [] }) {
     const script = captureResult?.customer?.report?.communication_script || captureResult?.report?.communication_script;
     if (!script) { setError("本次分析暂未生成可复制的话术，请查看完整分析结果。"); return; }
     try {
-      await copyToClipboard(plainText(script));
+      await copyToClipboard(businessText(script));
       setError(""); setScriptCopied(true);
       window.setTimeout(() => setScriptCopied(false), 1800);
     } catch { setError("浏览器未能自动复制，请手动选择话术内容复制。"); }
@@ -135,6 +144,26 @@ const REPORT_META = {
 
 function plainText(value = "") {
   return String(value).replace(/\*\*/g, "").replace(/`/g, "").replace(/<br\s*\/?>/gi, "\n").trim();
+}
+
+// The model may use Markdown internally.  The customer-facing product must
+// present plain business language rather than Markdown syntax.
+function businessText(value = "") {
+  return plainText(value)
+    .replace(/\[([^\]]+)\]\((?:[^)]+)\)/g, "$1")
+    .replace(/^\s*#{1,6}\s*/gm, "")
+    .replace(/^\s*(?:[-*+•●]|\d+[.、)）])\s+/gm, "")
+    .replace(/^\s*\|\s?/gm, "")
+    .replace(/\s*\|\s*/g, " · ")
+    .replace(/^\s*[-:：]{3,}\s*(?:·\s*[-:：]{3,}\s*)*$/gm, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function actionText(value = "") {
+  return businessText(value)
+    .replace(/^(?:动作|下一步动作|建议行动|行动建议)\s*[：:]\s*/i, "")
+    .trim();
 }
 
 async function copyToClipboard(value) {
@@ -213,7 +242,7 @@ function ReportView({ section, content }) {
   const [title, description] = REPORT_META[section] || ["分析结果", "AI 生成内容"];
   const blocks = parseReport(content);
   const copy = async () => {
-    try { await copyToClipboard(plainText(content)); setCopied(true); setTimeout(() => setCopied(false), 1800); }
+    try { await copyToClipboard(businessText(content)); setCopied(true); setTimeout(() => setCopied(false), 1800); }
     catch { setCopied(false); }
   };
   if (!content) return <Empty title="该模块暂无内容" body="完成一次分析后，知客会在这里展示可供人工确认的结果。" />;

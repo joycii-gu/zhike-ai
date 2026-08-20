@@ -4,7 +4,7 @@
 
 > Dishui Lake Global OPC AI Challenge · S3 Global Youth Development Program · W3 Semifinal · X Innovation Track
 
-ZhiKe AI helps salespeople, client managers, course consultants, business service consultants, and other client-facing professionals turn raw customer records into structured profiles, need analysis, opportunity assessment, follow-up plans, communication scripts, and daily business reports. In W3, it adds an in-session loop of **business goals → confirmed follow-up feedback → KPI progress → next actions**.
+ZhiKe AI helps salespeople, client managers, course consultants, business service consultants, and other client-facing professionals turn raw customer records into structured profiles, need analysis, opportunity assessment, follow-up plans, communication scripts, and daily business reports. Confirmed follow-up outcomes are then turned into tasks, risk signals, and KPI progress.
 
 ZhiKe AI is neither a generic chatbot nor a data-storage-first CRM. It operationalizes customer-understanding and action-planning methods as an evaluable Skills workflow. KPI progress is driven only by user-confirmed business events; the model is not allowed to invent achieved results.
 
@@ -16,7 +16,13 @@ ZhiKe AI is neither a generic chatbot nor a data-storage-first CRM. It operation
 - **Feedback state:** The user confirms events such as an effective conversation, need confirmation, completed demo, or priority-customer advancement.
 - **KPI action layer:** Calculates progress from confirmed events, flags execution risks, and maintains an in-session priority action queue.
 
-## W3 Agent Demo
+## W4 Application: Low-Input Business Action Hub
+
+The current release is a deployable web application with a React frontend, FastAPI backend, and account-isolated SQLite storage. Salespeople do not need to paste a full chat history after every interaction: after a call, meeting, or WeChat conversation, they can record one key update. ZhiKe uses the available customer context to produce a reviewable action draft.
+
+An AI suggestion never creates a task, sends a message, or affects KPI data until the businessperson confirms it. The **Deep Analysis** path remains available for first-time customer setup and complete record review.
+
+## W3 Agent Baseline
 
 The current Streamlit application demonstrates a deliverable, interactive business Agent. It is not presented as a complete commercial system.
 
@@ -29,12 +35,22 @@ Live demo: <https://zhike-ai-demo.streamlit.app/>
 
 ### Scope and Data Boundaries
 
-- KPI metrics only count feedback confirmed by the user in the current browser session. AI suggestions are never treated as achieved performance.
-- This version has no database, cross-session persistence, accounts, multi-user permissions, or live CRM, WeChat, or calendar integration.
-- W2 mock customers remain limited to the cross-customer daily-report demonstration. W3 customer state and KPI data are separate, in-session demo data.
+- KPI metrics only count feedback confirmed by the logged-in businessperson. AI suggestions are never treated as achieved performance.
+- W4 stores account-isolated customers, tasks, and feedback in SQLite. It does not integrate with a live CRM, WeChat, or calendar, and does not automatically read or send external messages.
+- Analysis text is sent to the configured model provider. Do not enter ID numbers, bank-card data, complete contact details, contract secrets, or other sensitive information.
 - Scripts, opportunity assessments, and business recommendations remain subject to human review and final decision-making.
 
 ## Quick Start
+
+### W4 Application (recommended)
+
+```bash
+docker compose up -d --build
+```
+
+Open `http://localhost:3000`. In production, configure `SYNSCALE_API_KEY` and `ZHIKE_SESSION_SECRET` in `.env`; never commit real keys.
+
+### W3 Streamlit Baseline
 
 ```bash
 cd zhike-ai
@@ -113,6 +129,8 @@ The regression tests confirm that repeated generation does not duplicate a custo
 - [W3 Demo Script](docs/09_w3_demo_script.md)
 - [W3 Evaluation](docs/10_w3_evaluation.md)
 - [W3 Test Evidence](docs/11_w3_test_evidence.md)
+- [W4 Data and Deployment](docs/12_w4_data_and_deployment.md)
+- [W4 Low-Input Action Hub Design](docs/13_w4_action_hub_design.md)
 - [Chinese README](README.md)
 
 ## Competition Information
