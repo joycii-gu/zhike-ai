@@ -43,8 +43,20 @@ def run_smoke_test() -> None:
             json={"customer_name": "李总", "raw_note": "李总想了解 AI 如何帮助企业培训销售团队跟进客户，希望下周线上沟通。", "force_mock": True},
         )
         assert response.status_code == 201, response.text
-        customer_id = response.json()["customer_id"]
+        analysis_payload = response.json()
+        customer_id = analysis_payload["customer_id"]
         assert customer_id
+        # Creation returns a detail object with all six report sections.
+        # The customer list below intentionally remains a lightweight summary,
+        # so the frontend must not replace this object with a list item.
+        assert set(analysis_payload["customer"]["report"]) == {
+            "customer_profile", "need_analysis", "opportunity_assessment",
+            "follow_up_plan", "communication_script", "daily_report",
+        }
+        response = client.get("/api/customers")
+        assert response.status_code == 200, response.text
+        assert response.json()[0]["id"] == customer_id
+        assert "report" not in response.json()[0]
 
         # Existing W2 mock output must not leak into an account's W4 daily
         # view, even when the underlying report was produced in Mock mode.

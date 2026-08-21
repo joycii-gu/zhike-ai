@@ -62,7 +62,20 @@ function App() {
     </aside>
     <main className="main"><header className="topbar"><div><p className="eyebrow">AI BUSINESS COMMAND CENTER</p><h1>{page === "dashboard" ? "今日业务驾驶舱" : page === "analysis" ? "新建客户分析" : page === "customers" ? "客户洞察" : "智能跟进"}</h1></div><div className="runtime"><span className={health?.api_configured ? "dot online" : "dot"}></span>{health?.runtime || "正在检查 Agent Runtime"}</div></header>
       {page === "dashboard" && <Dashboard dashboard={dashboard} tasks={tasks} customers={customers} onCreate={() => setPage("analysis")} onCustomer={chooseCustomer} />}
-      {page === "analysis" && <Analysis customers={customers} onDone={async (customer) => { await refresh(); setSelected(customer); setPage("customers"); notify("分析完成，已保存到客户洞察"); }} />}
+      {page === "analysis" && <Analysis customers={customers} onDone={async (customer) => {
+        await refresh();
+        setPage("customers");
+        try {
+          // /api/customers is intentionally a lightweight list. Reload the
+          // detail record so the report fields are never replaced by a list
+          // summary after a new analysis has been saved.
+          setSelected(await api.customer(customer.id));
+          notify("分析完成，已保存到客户洞察");
+        } catch (err) {
+          setSelected(null);
+          notify(err.message || "分析已保存，但客户详情加载失败；请从客户列表重新打开。");
+        }
+      }} />}
       {page === "customers" && <Customers customers={customers} selected={selected} onSelect={chooseCustomer} onFeedback={async (payload) => { await api.feedback(payload); await refresh(); setSelected(await api.customer(payload.customer_id)); notify("已记录人工确认反馈，KPI 已更新"); }} />}
       {page === "tasks" && <Tasks tasks={tasks} onRefresh={refresh} onCustomer={chooseCustomer} />}
     </main>{toast && <div className="toast">✓ {toast}</div>}
@@ -118,14 +131,14 @@ function Analysis({ onDone, customers = [] }) {
         });
       } else {
         const data = await api.analyse({ raw_note: note, customer_name: name, force_mock: mock });
-        onDone(data.customer);
+        await onDone(data.customer);
       }
     } catch (err) { setError(err.message); } finally { clearInterval(timer); setBusy(false); setStage(""); }
   };
   const confirmDraft = async () => {
     if (!captureResult?.action_draft) return;
     setConfirming(true); setError("");
-    try { await api.confirmActionDraft(captureResult.action_draft.id); onDone(captureResult.customer); }
+    try { await api.confirmActionDraft(captureResult.action_draft.id); await onDone(captureResult.customer); }
     catch (err) { setError(err.message); } finally { setConfirming(false); }
   };
   const dismissDraft = async () => {
@@ -349,7 +362,10 @@ function Customers({ customers, selected, onSelect, onFeedback }) {
   const [tab, setTab] = useState("follow_up_plan");
   // Do not render a detail record from a previous account while a new guest
   // account is still loading its isolated customer list.
-  const activeCustomer = selected && customers.find((customer) => customer.id === selected.id);
+  // Keep the full detail object returned by /api/customers/:id.  The list
+  // endpoint deliberately omits report_json for performance and privacy, so
+  // substituting its summary here would make every report tab look empty.
+  const activeCustomer = selected && customers.some((customer) => customer.id === selected.id) ? selected : null;
   const report = activeCustomer?.report || {};
   const sections = [["customer_profile", "客户档案"], ["need_analysis", "需求分析"], ["opportunity_assessment", "机会判断"], ["follow_up_plan", "跟进建议"], ["communication_script", "沟通话术"], ["daily_report", "业务日报"]];
   return <section className="customer-layout"><aside className="customer-list"><div className="panel-title"><h3>客户列表</h3><span>{customers.length}</span></div>{customers.map((c) => <button className={activeCustomer?.id === c.id ? "customer-item selected" : "customer-item"} onClick={() => onSelect(c.id)} key={c.id}><span className="avatar">{c.name?.slice(0, 1)}</span><div><b>{c.name}</b><p>{c.industry || "待确认"}</p></div><i>{c.priority || "中"}</i></button>)}{!customers.length && <p className="muted">尚未创建客户分析。</p>}</aside><div className="customer-detail">{activeCustomer ? <><div className="customer-heading"><div><p className="eyebrow">CUSTOMER INSIGHT</p><h2>{activeCustomer.name}</h2><p>{activeCustomer.industry || "待确认"} · {activeCustomer.stage || "待确认"} · <span className="source-badge">{activeCustomer.provider || "已保存报告"}</span></p></div><div className="customer-meta"><b>人工确认后才计入 KPI</b><span>模型推断不会自动视为业务结果</span></div></div><div className="report-tabs">{sections.map(([key, label]) => <button className={tab === key ? "selected" : ""} key={key} onClick={() => setTab(key)}>{label}</button>)}</div><article className="report-card"><div className="report-source"><span>内容来源：AI 分析结果</span><span>发送或决策前请人工确认</span></div><ReportView section={tab} content={report[tab]} /></article><Feedback customer={activeCustomer} onSubmit={onFeedback} /></> : <Empty title="选择一位客户查看洞察" body="完成新建分析后，这里会展示结构化报告、建议与人工反馈。" />}</div></section>;
