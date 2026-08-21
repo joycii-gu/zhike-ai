@@ -189,8 +189,14 @@ def _generate_scope_safe_daily_report(current: dict[str, Any], customers_in_scop
     todos = [{"客户": current_name, "待办": current_action}]
     risks = [{"客户": current_name, "风险": "预算、决策权限和实施范围仍需确认"}]
 
+    seen_names = {current_name}
     for item in customers_in_scope:
         name = str(item.get("name") or item.get("客户") or "待确认客户")
+        if name in seen_names:
+            # The current analysis already represents this customer's newest
+            # state.  Avoid showing the same customer twice after an update.
+            continue
+        seen_names.add(name)
         industry = str(item.get("industry") or item.get("行业") or "行业待确认")
         stage = str(item.get("stage") or item.get("当前阶段") or "当前阶段待确认")
         level = str(item.get("opportunity_level") or item.get("机会等级") or item.get("priority") or item.get("优先级") or "待判断")
@@ -220,39 +226,13 @@ def _generate_scope_safe_daily_report(current: dict[str, Any], customers_in_scop
     }
 
 
-def generate_daily_report(current: dict[str, Any], mock_customers: list[dict[str, Any]]) -> dict[str, Any]:
-    """Skill 7: aggregate only the current result and in-memory Mock customers."""
-    if len(mock_customers) < 2:
-        return _generate_scope_safe_daily_report(current, mock_customers)
+def generate_daily_report(current: dict[str, Any], customers_in_scope: list[dict[str, Any]]) -> dict[str, Any]:
+    """Skill 7: aggregate only the active account or visitor scope.
 
-    current_name = current["profile"]["基本信息"]["称谓"].replace("【事实】", "")
-    current_level = current["opportunity"]["商机等级"]
-    customers = [
-        {"客户": mock_customers[0]["name"], "要点": f"{mock_customers[0]['industry']}，{mock_customers[0]['stage']}，机会等级{mock_customers[0]['opportunity_level']}。"},
-        {"客户": current_name, "要点": f"{current['profile']['基本信息']['行业']}，{current['profile']['决策阶段']}，机会等级{current_level}。"},
-        {"客户": mock_customers[1]["name"], "要点": f"{mock_customers[1]['industry']}，{mock_customers[1]['stage']}，机会等级{mock_customers[1]['opportunity_level']}。"},
-    ]
-    return {
-        "数据组成": [current_name, mock_customers[0]["name"], mock_customers[1]["name"]],
-        "今日客户情况": customers,
-        "优先级排序": [mock_customers[0]["name"], current_name, mock_customers[1]["name"]],
-        "待办事项": [
-            {"客户": mock_customers[0]["name"], "待办": mock_customers[0]["todo"]},
-            {"客户": current_name, "待办": current["follow_up"][0]["动作"]},
-            {"客户": mock_customers[1]["name"], "待办": mock_customers[1]["todo"]},
-        ],
-        "风险提醒": [
-            {"客户": mock_customers[0]["name"], "风险": mock_customers[0]["risk"]},
-            {"客户": current_name, "风险": "预算、决策权限和实施范围仍需确认"},
-            {"客户": mock_customers[1]["name"], "风险": mock_customers[1]["risk"]},
-        ],
-        "明日计划": [
-            f"优先补充{mock_customers[0]['name']}的方案与数据安全材料。",
-            f"推进{current_name}的下一次沟通并确认关键缺口。",
-            f"完成{mock_customers[1]['name']}的需求资格确认。",
-        ],
-        "数据范围说明": "本日报仅由当前输入与 2 个内存 Mock 客户生成。Mock 数据不写入数据库，不代表真实历史记录；页面刷新或服务重启后恢复初始状态。",
-    }
+    W4 must never silently inject the old W2 demo customers.  The caller is
+    responsible for providing the current account/visitor context explicitly.
+    """
+    return _generate_scope_safe_daily_report(current, customers_in_scope)
 
 
 def _md_list(items: list[str]) -> str:

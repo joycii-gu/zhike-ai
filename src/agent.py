@@ -10,7 +10,6 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from .mock_customers import get_mock_customers
 from .prompt import SYSTEM_PROMPT, build_user_prompt
 from .schema import REPORT_FIELDS, REPORT_JSON_SCHEMA, BusinessReport, validate_report
 from .skills import run_mock_skills_pipeline
@@ -400,12 +399,10 @@ def business_agent(
     if len(normalized) < 8:
         raise ValueError("请输入至少 8 个字符的客户信息或沟通记录。")
     provider, _ = _select_provider(force_mock=force_mock)
-    # Mock records are limited to an explicitly requested demonstration run.
-    # A deployed account supplies its own customer summaries for Skill 7.
-    # W2 mock customers are an explicit demonstration-only data source.  A
-    # signed-in application run must never silently inherit them just because
-    # the caller has not supplied other account customers yet.
-    customer_scope = get_mock_customers() if force_mock else (daily_customers or [])
+    # Skill 7 must only see the customer scope supplied by the current account.
+    # `force_mock` selects a deterministic local model implementation; it must
+    # not silently inject the old W2 mock customers into a W4 account or guest.
+    customer_scope = daily_customers or []
     return provider.generate(normalized, customer_scope)
 
 
@@ -420,9 +417,8 @@ def business_agent_with_trace(
     if len(normalized) < 8:
         raise ValueError("请输入至少 8 个字符的客户信息或沟通记录。")
     provider, _ = _select_provider(force_mock=force_mock)
-    # See business_agent(): normal account runs use only the supplied account
-    # scope.  Mock records remain available solely through force_mock=True.
-    customer_scope = get_mock_customers() if force_mock else (daily_customers or [])
+    # Keep the trace path identical to the non-trace path: account scope only.
+    customer_scope = daily_customers or []
     return provider.generate_with_trace(normalized, customer_scope)
 
 
